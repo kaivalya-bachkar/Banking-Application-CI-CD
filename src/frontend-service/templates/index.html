@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaivalya Global Bank</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f6f9; }
+        .navbar { background-color: #003366; }
+        .navbar-brand { color: #ffffff !important; font-weight: bold; letter-spacing: 1px; }
+        .card { border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: none; margin-bottom: 20px; }
+        .card-header { background-color: #ffffff; border-bottom: 2px solid #f4f6f9; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg mb-4 shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="#">🏦 Global Bank</a>
+            <span class="text-white">Admin Dashboard</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header text-primary">👥 Registered Users</div>
+                    <div class="card-body">
+                        <table class="table table-borderless table-hover">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Name</th><th>Email</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for user_id, user in users.items() %}
+                                <tr>
+                                    <td>{{ user_id }}</td>
+                                    <td><strong>{{ user.name }}</strong></td>
+                                    <td>{{ user.email }}</td>
+                                    <td><span class="badge bg-success">{{ user.status }}</span></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted">User API offline.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header text-success">💰 Active Accounts</div>
+                    <div class="card-body">
+                        <table class="table table-borderless table-hover">
+                            <thead class="table-light">
+                                <tr><th>Acc #</th><th>Type</th><th>Balance</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for acc_id, acc in accounts.items() %}
+                                <tr>
+                                    <td>{{ acc_id }}</td>
+                                    <td>{{ acc.type }}</td>
+                                    <td class="text-success fw-bold">${{ acc.balance }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-center text-muted">Account API offline.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-8">
+                <div class="card h-100">
+                    <div class="card-header text-warning">🔄 Recent Transactions</div>
+                    <div class="card-body">
+                        <table class="table table-borderless table-hover">
+                            <thead class="table-light">
+                                <tr><th>Txn ID</th><th>Acc #</th><th>Type</th><th>Amount</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for txn in transactions %}
+                                <tr>
+                                    <td>{{ txn.txn_id }}</td>
+                                    <td>{{ txn.account_id }}</td>
+                                    <td><span class="badge bg-secondary">{{ txn.type }}</span></td>
+                                    <td class="fw-bold">${{ txn.amount }}</td>
+                                    <td><span class="badge bg-success">{{ txn.status }}</span></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted">Transaction API offline or no data.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header text-info">🔔 System Notifications</div>
+                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                        <h5 class="text-muted mb-3">Notification Service Status:</h5>
+                        {% if notif_status == 'healthy' %}
+                            <h2 class="text-success fw-bold">🟢 ONLINE</h2>
+                            <p class="text-muted mt-2">Ready to send SMS/Email alerts.</p>
+                        {% else %}
+                            <h2 class="text-danger fw-bold">🔴 OFFLINE</h2>
+                            <p class="text-muted mt-2">Check the API container.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
