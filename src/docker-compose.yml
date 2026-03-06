@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # 1. Database (Pinned to stable version 16)
+  banking-db:
+    container_name: local-banking-db
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=banking_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 2. Notification Service
+  notification-service:
+    container_name: notification-cont
+    build: ./notification-service
+    ports:
+      - "5004:5004"
+
+  # 3. User Service
+  user-service:
+    container_name: user-cont
+    build: ./user-service
+    ports:
+      - "5001:5001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@banking-db:5432/banking_db
+    depends_on:
+      - banking-db
+    restart: on-failure
+
+  # 4. Account Service
+  account-service:
+    container_name: account-cont
+    build: ./account-service
+    ports:
+      - "5002:5002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@banking-db:5432/banking_db
+      - USER_SERVICE_URL=http://user-service:5001
+    depends_on:
+      - banking-db
+      - user-service
+    restart: on-failure
+
+  # 5. Transaction Service
+  transaction-service:
+    container_name: transaction-cont
+    build: ./transaction-service
+    ports:
+      - "5003:5003"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@banking-db:5432/banking_db
+      - ACCOUNT_SERVICE_URL=http://account-service:5002
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5004
+    depends_on:
+      - banking-db
+      - account-service
+      - notification-service
+    restart: on-failure
+
+  # 6. Frontend Service
+  frontend-service:
+    container_name: frontend-cont
+    build: ./frontend-service
+    ports:
+      - "5000:5000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:5001
+      - ACCOUNT_SERVICE_URL=http://account-service:5002
+      - TRANSACTION_SERVICE_URL=http://transaction-service:5003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5004
+    depends_on:
+      - user-service
+      - account-service
+      - transaction-service
+      - notification-service
+    restart: on-failure
+
+volumes:
+  pgdata:
