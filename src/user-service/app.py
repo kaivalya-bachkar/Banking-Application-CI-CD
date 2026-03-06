@@ -30,5 +30,20 @@ def get_users():
     users = User.query.all()
     return jsonify([{"id": u.id, "name": u.name, "email": u.email, "kyc": u.kyc_status} for u in users])
 
+@app.route('/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    user = User.query.get(user_id)
+    if user:
+        return jsonify({"id": user.id, "name": user.name, "kyc": user.kyc_status}), 200
+    return jsonify({"error": "User not found"}), 404
+
+@app.route('/users/<int:user_id>/approve', methods=['POST'])
+def approve_kyc(user_id):
+    user = User.query.get(user_id)
+    if not user: return jsonify({"error": "User not found"}), 404
+    user.kyc_status = 'done'
+    db.session.commit()
+    return jsonify({"message": "KYC Approved"}), 200
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

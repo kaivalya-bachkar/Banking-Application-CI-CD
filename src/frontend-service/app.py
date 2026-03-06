@@ -1,48 +1,47 @@
-from flask import Flask, render_template
-import requests
-import os
+from flask import Flask, render_template, request, redirect, url_for
+import requests, os
 
 app = Flask(__name__)
+U_URL = os.environ.get("USER_SERVICE_URL", "http://127.0.0.1:5001")
+A_URL = os.environ.get("ACCOUNT_SERVICE_URL", "http://127.0.0.1:5002")
+T_URL = os.environ.get("TRANSACTION_SERVICE_URL", "http://127.0.0.1:5003")
+N_URL = os.environ.get("NOTIFICATION_SERVICE_URL", "http://127.0.0.1:5004")
 
-# URLs for all 4 backend microservices
-USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://127.0.0.1:5001")
-ACCOUNT_SERVICE_URL = os.environ.get("ACCOUNT_SERVICE_URL", "http://127.0.0.1:5002")
-TRANSACTION_SERVICE_URL = os.environ.get("TRANSACTION_SERVICE_URL", "http://127.0.0.1:5003")
-NOTIFICATION_SERVICE_URL = os.environ.get("NOTIFICATION_SERVICE_URL", "http://127.0.0.1:5004")
+def fetch(url):
+    try: return requests.get(url).json()
+    except: return []
 
 @app.route('/')
 def dashboard():
-    # 1. Fetch Users
+    users = fetch(f"{U_URL}/users")
+    accounts = fetch(f"{A_URL}/accounts")
+    txns = fetch(f"{T_URL}/transactions")
     try:
-        users = requests.get(f"{USER_SERVICE_URL}/users").json().get("data", {})
+        notifs = requests.get(f"{N_URL}/notifications").json().get("data", [])
+        status = "healthy"
     except:
-        users = {}
-    
-    # 2. Fetch Accounts
-    try:
-        accounts = requests.get(f"{ACCOUNT_SERVICE_URL}/accounts").json().get("data", {})
-    except:
-        accounts = {}
+        notifs, status = [], "offline"
+    return render_template('index.html', users=users, accounts=accounts, transactions=txns, alerts_list=notifs, notif_status=status)
 
-    # 3. Fetch Transactions
-    try:
-        # Transactions is a list in our mock data, not a dictionary
-        transactions = requests.get(f"{TRANSACTION_SERVICE_URL}/transactions").json().get("data", [])
-    except:
-        transactions = []
+@app.route('/add_user', methods=['POST'])
+def add_user():
+    requests.post(f"{U_URL}/users", json={"name": request.form['name'], "email": request.form['email']})
+    return redirect('/')
 
-    # 4. Fetch Notification Health Status
-    try:
-        notif_status = requests.get(f"{NOTIFICATION_SERVICE_URL}/notifications/health").json().get("status", "offline")
-    except:
-        notif_status = "offline"
+@app.route('/approve_user/<int:user_id>', methods=['POST'])
+def approve_user(user_id):
+    requests.post(f"{U_URL}/users/{user_id}/approve")
+    return redirect('/')
 
-    # Render the HTML page with all the data
-    return render_template('index.html', 
-                           users=users, 
-                           accounts=accounts, 
-                           transactions=transactions, 
-                           notif_status=notif_status)
+@app.route('/add_account', methods=['POST'])
+def add_account():
+    requests.post(f"{A_URL}/accounts", json={"user_id": int(request.form['user_id']), "account_type": request.form['account_type'], "initial_deposit": float(request.form['initial_deposit'])})
+    return redirect('/')
+
+@app.route('/add_transaction', methods=['POST'])
+def add_transaction():
+    requests.post(f"{T_URL}/transactions", json={"account_id": int(request.form['account_id']), "amount": float(request.form['amount']), "txn_type": request.form['txn_type']})
+    return redirect('/')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
