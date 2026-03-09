@@ -11,10 +11,10 @@ resource "azurerm_resource_group" "rg" {
 # }
 
 resource "azurerm_virtual_network" "vnet" {
-  name                = "var.vnet-name"
+  name                = "var.vnet_name"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  address_space       = "var.vnet_cidr"
+  address_space       = [var.vnet_cidr]
 
   #   subnet {
   #     name             = "subnet1"
@@ -56,15 +56,15 @@ resource "azurerm_subnet" "private" {
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = [var.private_subnet_cidrs[count.index]]
 }
-delegation {
-  name = "fs"
-  service_delegation {
-    name = "Microsoft.DBforPostgreSQL/flexibleServers"
-    actions = [
-      "Microsoft.Network/virtualNetworks/subnets/join/action",
-    ]
-  }
-}
+# delegation {
+#   name = "fs"
+#   service_delegation {
+#     name = "Microsoft.DBforPostgreSQL/flexibleServers"
+#     actions = [
+#       "Microsoft.Network/virtualNetworks/subnets/join/action",
+#     ]
+#   }
+# }
 
 #public nsg for application gateway
 resource "azurerm_network_security_group" "public_nsg" {
