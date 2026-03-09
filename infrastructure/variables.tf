@@ -106,4 +106,3 @@ variable "mod_db_admin_password" {
   type = string
 }
 
-
