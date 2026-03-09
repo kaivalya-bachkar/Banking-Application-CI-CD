@@ -30,6 +30,7 @@ module "acr-aks" {
   aks_vm_size           = var.mod_aks_vm_size
   private_subnet_one_id = module.Network.private_subnet_one_id
   comman_tag            = var.mod_comman_tag
+  depends_on            = [module.Network]
 }
 
 module "postgres_db" {
@@ -44,4 +45,5 @@ module "postgres_db" {
   db_sku_name             = var.mod_db_sku_name
   db_admin_user           = var.mod_db_admin_user
   db_admin_password       = var.mod_db_admin_password
+  depends_on              = [module.Network]
 }

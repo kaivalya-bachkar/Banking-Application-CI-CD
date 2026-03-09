@@ -57,7 +57,7 @@ resource "azurerm_subnet" "private" {
   address_prefixes     = [var.private_subnet_cidrs[count.index]]
 
   dynamic "delegation" {
-    for_each = count.index == 3 ? [1] : []
+    for_each = count.index == 2 ? [1] : []
     content {
       name = "fs"
       service_delegation {
@@ -70,7 +70,7 @@ resource "azurerm_subnet" "private" {
 
 #public nsg for application gateway
 resource "azurerm_network_security_group" "public_nsg" {
-  name                = "var.public_nsg"
+  name                = var.public_nsg
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -101,7 +101,7 @@ resource "azurerm_network_security_group" "public_nsg" {
 
 #private nsg for acr, aks, and db
 resource "azurerm_network_security_group" "private_nsg" {
-  name                = "var.private_nsg"
+  name                = var.private_nsg
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -148,7 +148,7 @@ resource "azurerm_subnet_network_security_group_association" "private" {
 # }
 
 resource "azurerm_public_ip" "nat_ip" {
-  name                = "var.public_nat_ip"
+  name                = var.public_nat_ip
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Static"
@@ -156,7 +156,7 @@ resource "azurerm_public_ip" "nat_ip" {
 }
 
 resource "azurerm_nat_gateway" "nat_gw" {
-  name                = "var.nat_gw_name"
+  name                = var.nat_gw_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   sku_name            = "Standard"

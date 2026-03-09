@@ -65,6 +65,18 @@ resource "azurerm_kubernetes_cluster" "aks" {
   tags = {
     Environment = "var.comman_tag"
   }
+  network_profile {
+    network_plugin    = "azure"
+    load_balancer_sku = "standard"
+    outbound_type     = "userAssignedNATGateway"
+
+    service_cidr   = "192.168.0.0/16" # Completely outside your 10.0.0.0/16 VNet
+    dns_service_ip = "192.168.0.10"   # Must be inside the service_cidr above
+  }
+
+  ingress_application_gateway {
+    subnet_id = var.private_subnet_one_id
+  }
 }
 
 resource "azurerm_role_assignment" "aks_acr_pull" {
