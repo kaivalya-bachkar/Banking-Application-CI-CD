@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Global Bank | Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .navbar { background: linear-gradient(90deg, #002244 0%, #004488 100%); border-bottom: 3px solid #ffcc00; }
+        .navbar-brand { font-weight: 800; letter-spacing: 1px; color: #fff !important; }
+        .card { border: none; border-radius: 12px; transition: transform 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .card:hover { transform: translateY(-3px); }
+        .card-header { background-color: #fff; border-bottom: 1px solid #edf2f7; font-weight: bold; font-size: 1.1rem; border-radius: 12px 12px 0 0 !important; }
+        .btn-primary { background-color: #004488; border: none; }
+        .table { font-size: 0.9rem; vertical-align: middle; }
+        .badge-kyc { font-size: 0.75rem; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-expand-lg mb-4 shadow">
+        <div class="container d-flex justify-content-between">
+            <a class="navbar-brand" href="#">🏦  GLOBAL BANK</a>
+            <div>
+                {% if notif_status == 'healthy' %}
+                    <button type="button" class="btn btn-light btn-sm fw-bold position-relative" data-bs-toggle="modal" data-bs-target="#alertsModal">
+                        🔔 Alerts
+                        {% if alerts_list|length > 0 %}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                            {{ alerts_list|length }}
+                        </span>
+                        {% endif %}
+                    </button>
+                {% else %}
+                    <span class="badge bg-danger">🔕 System Offline</span>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="card h-100">
+                    <div class="card-header text-primary">👥 Customer Directory</div>
+                    <div class="card-body">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr><th>ID</th><th>Name</th><th>Email</th><th>KYC Status</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>{{ user.id }}</td>
+                                    <td><strong>{{ user.name }}</strong></td>
+                                    <td>{{ user.email }}</td>
+                                    <td>
+                                        {% if user.kyc == 'pending' %}
+                                            <form action="/approve_user/{{ user.id }}" method="POST" class="d-inline">
+                                                <button type="submit" class="btn btn-warning btn-sm fw-bold">Verify KYC</button>
+                                            </form>
+                                        {% else %}
+                                            <span class="badge bg-success badge-kyc">✅ Done</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card h-100 border-start border-primary border-4">
+                    <div class="card-header">Onboard New Customer</div>
+                    <div class="card-body">
+                        <form action="/add_user" method="POST">
+                            <input type="text" name="name" class="form-control mb-3" placeholder="Full Name" required>
+                            <input type="email" name="email" class="form-control mb-3" placeholder="Email Address" required>
+                            <button type="submit" class="btn btn-primary w-100 fw-bold">Register User</button>
+                        </form>
+                        <p class="text-muted small mt-3">*Note: Accounts can only be opened after KYC verification.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header text-success">💰 Managed Accounts</div>
+                    <div class="card-body">
+                        <form action="/add_account" method="POST" class="mb-4 p-3 bg-light rounded border">
+                            <label class="form-label small fw-bold">Open New Account</label>
+                            <div class="row g-2">
+                                <div class="col-12 mb-2">
+                                    <select name="user_id" class="form-select" required>
+                                        <option value="" disabled selected>Choose Verified User...</option>
+                                        {% for user in users %}
+                                            {% if user.kyc == 'done' %}
+                                            <option value="{{ user.id }}">{{ user.name }} (ID: {{ user.id }})</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <select name="account_type" class="form-select">
+                                        <option value="Savings">Savings</option>
+                                        <option value="Checking">Checking</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <input type="number" step="0.01" name="initial_deposit" class="form-control" placeholder="Deposit $" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success btn-sm w-100 mt-3 fw-bold">Open Account</button>
+                        </form>
+                        
+                        <table class="table table-sm">
+                            <thead class="table-light"><tr><th>Acc #</th><th>User ID</th><th>Type</th><th>Balance</th></tr></thead>
+                            <tbody>
+                                {% for acc in accounts %}
+                                <tr><td>{{ acc.acc_num }}</td><td>{{ acc.user_id }}</td><td>{{ acc.type }}</td><td class="fw-bold text-success">${{ acc.balance }}</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header text-warning">🔄 Transaction Terminal</div>
+                    <div class="card-body">
+                        <form action="/add_transaction" method="POST" class="mb-4 p-3 bg-light rounded border">
+                            <label class="form-label small fw-bold">Execute Transaction</label>
+                            <div class="row g-2">
+                                <div class="col-12 mb-2">
+                                    <select name="account_id" class="form-select" required>
+                                        <option value="" disabled selected>Select Active Account...</option>
+                                        {% for acc in accounts %}
+                                        <option value="{{ acc.acc_num }}">Acc #{{ acc.acc_num }} (Bal: ${{ acc.balance }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <select name="txn_type" class="form-select">
+                                        <option value="credit">Deposit (+)</option>
+                                        <option value="debit">Withdraw (-)</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount $" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-warning btn-sm w-100 mt-3 fw-bold">Process Funds</button>
+                        </form>
+
+                        <table class="table table-sm">
+                            <thead class="table-light"><tr><th>Txn ID</th><th>Acc #</th><th>Type</th><th>Amount</th></tr></thead>
+                            <tbody>
+                                {% for txn in transactions %}
+                                <tr>
+                                    <td>{{ txn.txn_id }}</td>
+                                    <td>#{{ txn.account_id }}</td>
+                                    <td><span class="badge {% if txn.txn_type == 'credit' %}bg-info{% else %}bg-secondary{% endif %}">{{ txn.txn_type }}</span></td>
+                                    <td class="fw-bold">${{ txn.amount }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="alertsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">🔔 Recent Activity Alerts</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for alert in alerts_list %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>{{ alert.message }}</span>
+                            <small class="text-muted">{{ alert.time }}</small>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-center py-4 text-muted">No new notifications.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
