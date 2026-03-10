@@ -11,7 +11,7 @@ pool:
 
 variables:
   # This is the name of the Service Connection we will create in ADO
-  azureServiceConnection: 'Banking-App-Azure-Connection'
+  azureServiceConnection: 'Banking-App-Service-Connection'
   
   # Terraform Backend Settings (Where the state file lives)
   tf_backend_rg: 'terraform-state-rg'
