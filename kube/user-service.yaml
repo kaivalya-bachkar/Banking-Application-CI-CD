@@ -27,6 +27,8 @@ spec:
           value: "postgres"
         - name: DB_PASSWORD
           value: "__DB_PASSWORD__" 
+        - name: DB_NAME
+          value: banking_db
 ---
 apiVersion: v1
 kind: Service
