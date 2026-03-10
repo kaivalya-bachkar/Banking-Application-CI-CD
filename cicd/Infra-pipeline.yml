@@ -1,133 +1,58 @@
-trigger:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - infrastructure/** 
+trigger: none 
+
 pool:
   name: 'Default'
 
+parameters:
+  - name: environment
+    displayName: 'Target Environment'
+    type: string
+    default: 'dev'
+    values:
+      - dev
+      - qa
+      - uat
+      - prod
+  - name: action
+    displayName: 'Terraform Action'
+    type: string
+    default: 'plan'
+    values:
+      - plan
+      - apply
+      - destroy
+
 variables:
-  
   azureServiceConnection: 'Banking-App-Service-Connection'
-  
-  
-  tf_backend_rg: 'Banking_app_test'
-  tf_backend_storage: 'bankingtfstate'
-  tf_backend_container: 'tfstate'
-  tf_backend_key: 'dev.terraform.tfstate'
-  
-  tf_environment: 'dev'
 
-stages:
-
-- stage: TerraformPlan
-  displayName: 'Terraform Plan'
-  jobs:
-  - job: PlanJob
-    displayName: 'Init and Plan'
-    steps:
-    - task: AzureCLI@2
-      displayName: 'Run Terraform Init & Plan'
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        addSpnToEnvironment: true
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          export ARM_CLIENT_ID=$servicePrincipalId
-          export ARM_CLIENT_SECRET=$servicePrincipalKey
-          export ARM_TENANT_ID=$tenantId
-          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-          cd infrastructure
+jobs:
+- job: TerraformInfra
+  displayName: 'Init + ${{ parameters.action }} for ${{ parameters.environment }}'
+  steps:
+  - task: AzureCLI@2
+    displayName: 'Execute Terraform'
+    inputs:
+      azureSubscription: $(azureServiceConnection)
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        cd infrastructure
+        
+        echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+        terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
+        
+        echo " STEP 2: RUNNING TERRAFORM ${{ parameters.action }}"
+        
+        if [ "${{ parameters.action }}" == "plan" ]; then
           
-          echo "Initializing Terraform..."
-          terraform init \
-            -backend-config="resource_group_name=$(tf_backend_rg)" \
-            -backend-config="storage_account_name=$(tf_backend_storage)" \
-            -backend-config="container_name=$(tf_backend_container)" \
-            -backend-config="key=$(tf_backend_key)"
-
-          echo "Running Terraform Plan..."
-          terraform plan -var-file="environments/$(tf_environment)/$(tf_environment).tfvars" -out=tfplan
-
-
-- stage: TerraformApply
-  displayName: 'Terraform Apply'
-  dependsOn: TerraformPlan
-  condition: succeeded()
-  jobs:
-  - job: ApplyJob
-    displayName: 'Apply Infrastructure'
-    steps:
-    - task: AzureCLI@2
-      displayName: 'Run Terraform Init & Apply'
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        addSpnToEnvironment: true
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          export ARM_CLIENT_ID=$servicePrincipalId
-          export ARM_CLIENT_SECRET=$servicePrincipalKey
-          export ARM_TENANT_ID=$tenantId
-          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-          cd infrastructure
+          terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
           
-          terraform init \
-            -backend-config="resource_group_name=$(tf_backend_rg)" \
-            -backend-config="storage_account_name=$(tf_backend_storage)" \
-            -backend-config="container_name=$(tf_backend_container)" \
-            -backend-config="key=$(tf_backend_key)"
-
-          echo "Applying Terraform Plan..."
-          terraform apply -auto-approve -var-file="environments/$(tf_environment)/$(tf_environment).tfvars"
-
-
-- stage: TerraformDestroy
-  displayName: 'Terraform Destroy'
-  dependsOn: TerraformApply
-  condition: succeeded()
-  jobs:
-  
-  - job: WaitForDestroyApproval
-    displayName: 'Wait for Human Approval to Destroy'
-    pool: server 
-    timeoutInMinutes: 4320 
-    steps:
-    - task: ManualValidation@0
-      inputs:
-        notifyUsers: ''
-        instructions: 'WARNING: Approve this step to completely DESTROY the Dev infrastructure.'
-
-  - job: DestroyJob
-    displayName: 'Destroy Infrastructure'
-    dependsOn: WaitForDestroyApproval
-    steps:
-    - task: AzureCLI@2
-      displayName: 'Run Terraform Init & Destroy'
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        addSpnToEnvironment: true
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          export ARM_CLIENT_ID=$servicePrincipalId
-          export ARM_CLIENT_SECRET=$servicePrincipalKey
-          export ARM_TENANT_ID=$tenantId
-          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-          cd infrastructure
-
-          # Re-initialize the backend
-          terraform init \
-            -backend-config="resource_group_name=$(tf_backend_rg)" \
-            -backend-config="storage_account_name=$(tf_backend_storage)" \
-            -backend-config="container_name=$(tf_backend_container)" \
-            -backend-config="key=$(tf_backend_key)"
-
-          echo "Destroying Infrastructure..."
-          terraform destroy -auto-approve -var-file="environments/$(tf_environment)/$(tf_environment).tfvars"
+        elif [ "${{ parameters.action }}" == "apply" ]; then
+          
+          terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+          
+        elif [ "${{ parameters.action }}" == "destroy" ]; then
+          
+          terraform destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+          
+        fi
