@@ -22,12 +22,22 @@ parameters:
       - apply
       - destroy
 
+# We use conditional logic to fix the redundant naming!
 variables:
-  azureServiceConnection: 'Banking-App-Service-Connection'
+  - name: azureServiceConnection
+    value: 'Banking-App-Service-Connection'
+  - name: displayAction
+    ${{ if eq(parameters.action, 'plan') }}:
+      value: 'Init + Plan'
+    ${{ if eq(parameters.action, 'apply') }}:
+      value: 'Init + Plan + Apply'
+    ${{ if eq(parameters.action, 'destroy') }}:
+      value: 'Init + Plan + Destroy'
 
 jobs:
 - job: TerraformInfra
-  displayName: 'Init + Plan + ${{ parameters.action }} for ${{ parameters.environment }}'
+  # This will now display perfectly: "Init + Plan for dev" or "Init + Plan + Apply for qa"
+  displayName: '${{ variables.displayAction }} for ${{ parameters.environment }}'
   steps:
   - task: AzureCLI@2
     displayName: 'Execute Terraform'
@@ -38,13 +48,13 @@ jobs:
       inlineScript: |
         cd infrastructure
         
+        
         echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
-         
+        
         terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
-         
+        
         echo " STEP 2: RUNNING TERRAFORM PLAN"
-         
-        # If we are destroying, we want the plan to specifically show what will be deleted
+        
         if [ "${{ parameters.action }}" == "destroy" ]; then
           terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
         else
@@ -52,7 +62,7 @@ jobs:
         fi
         
         echo " STEP 3: RUNNING TERRAFORM ${{ parameters.action }}"
-         
+        
         if [ "${{ parameters.action }}" == "apply" ]; then
           
           terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
