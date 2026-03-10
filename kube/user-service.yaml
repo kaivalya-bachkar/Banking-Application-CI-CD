@@ -16,10 +16,11 @@ spec:
       - name: user-service
         image: bankingAppRegistryDev.azurecr.io/user-service:__IMAGE_TAG__
         ports:
-        - containerPort: 5001
+        - containerPort: 5001 
         env:
+        
         - name: DB_HOST
-          value: "bankingdev-psqlflexibleserver.postgres.database.azure.com"
+          value: "__DB_HOST__" 
         - name: DB_PORT
           value: "5432"
         - name: DB_USER
@@ -32,6 +33,7 @@ kind: Service
 metadata:
   name: user-service
 spec:
+  
   type: ClusterIP 
   selector:
     app: user-service

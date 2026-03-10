@@ -4,22 +4,24 @@ trigger:
       - main
   paths:
     include:
-      - src/user-service/** 
+      - src/user-service/**
 
 pool:
   name: 'Default'
 
 variables:
   azureServiceConnection: 'Banking-App-Service-Connection'
-  acrName: 'bankingAppRegistryDev' 
   imageName: 'user-service'
   tag: '$(Build.BuildId)'
-  aksResourceGroup: 'Banking_Application_Dev'
-  aksName: 'banking-app-aks-dev'
 
 stages:
-- stage: BuildAndPush
-  displayName: 'Build and Push User Service'
+ 
+# 1. BUILD & PUSH (DEV ONLY)
+ 
+- stage: Build_Dev
+  displayName: 'Build & Push to Dev ACR'
+  variables:
+    devAcrName: 'bankingAppRegistryDev' 
   jobs:
   - job: BuildPushJob
     steps:
@@ -30,36 +32,160 @@ stages:
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          # Go to user-service source code
           cd src/user-service
-          
-          az acr login --name $(acrName)
-          docker build -t $(acrName).azurecr.io/$(imageName):$(tag) .
-          docker push $(acrName).azurecr.io/$(imageName):$(tag)
-
-- stage: DeployToAKS
-  displayName: 'Deploy User Service to AKS'
-  dependsOn: BuildAndPush
+          az acr login --name $(devAcrName)
+          docker build -t $(devAcrName).azurecr.io/$(imageName):$(tag) .
+          docker push $(devAcrName).azurecr.io/$(imageName):$(tag)
+ 
+# 2. DEPLOY DEV
+ 
+- stage: Deploy_Dev
+  displayName: 'Deploy to Dev'
+  dependsOn: Build_Dev
+  variables:
+    devAcrName: 'bankingAppRegistryDev'
+    aksResourceGroup: 'Banking_Application_Dev'
+    aksName: 'banking-app-aks-dev'
+    dbHost: 'bankingdev-psqlflexibleserver.postgres.database.azure.com'
   jobs:
-  - job: DeployJob
-    steps:
-    - task: AzureCLI@2
-      displayName: 'Kubectl Apply'
-      inputs:
-        azureSubscription: $(azureServiceConnection)
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          # 1. Replace the Image Tag
-          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service.yaml
-          
-          # 2. Securely Inject the DB Password
-          sed -i "s|__DB_PASSWORD__|$MAPPED_DB_PASS|g" kube/user-service.yaml
-          
-          # 3. Connect to AKS
-          az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
+  - deployment: DeployDev
+    displayName: 'Deploy to Dev AKS'
+    environment: 'dev' 
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self 
+          - task: AzureCLI@2
+            displayName: 'Kubectl Apply to Dev'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service.yaml
+                sed -i "s|bankingAppRegistryDev.azurecr.io|$(devAcrName).azurecr.io|g" kube/user-service.yaml
+                sed -i "s/__DB_HOST__/$(dbHost)/g" kube/user-service.yaml
+                sed -i "s|__DB_PASSWORD__|$MAPPED_DB_PASS|g" kube/user-service.yaml
+                
+                az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
+                kubectl apply -f kube/user-service.yaml
+            env:
+              MAPPED_DB_PASS: $(dbPasswordDev) 
 
-          # 4. Deploy
-          kubectl apply -f kube/user-service.yaml
-      env:
-        MAPPED_DB_PASS: $(dbPassword)
+# 3. PROMOTE TO QA
+ 
+- stage: Deploy_QA
+  displayName: 'Deploy to QA'
+  dependsOn: Deploy_Dev
+  variables:
+    sourceAcrName: 'bankingAppRegistryDev'
+    targetAcrName: 'bankingAppRegistryQA' 
+    aksResourceGroup: 'Banking_Application_QA'
+    aksName: 'banking-app-aks-qa'
+    dbHost: 'bankingqa-psqlflexibleserver.postgres.database.azure.com'
+  jobs:
+  - deployment: DeployQA
+    displayName: 'Deploy to QA AKS'
+    environment: 'qa' 
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: 'Copy Image & Deploy to QA'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az acr import --name $(targetAcrName) --source $(sourceAcrName).azurecr.io/$(imageName):$(tag) --image $(imageName):$(tag)
+                
+                sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service.yaml
+                sed -i "s|bankingAppRegistryDev.azurecr.io|$(targetAcrName).azurecr.io|g" kube/user-service.yaml
+                sed -i "s/__DB_HOST__/$(dbHost)/g" kube/user-service.yaml
+                sed -i "s|__DB_PASSWORD__|$MAPPED_DB_PASS|g" kube/user-service.yaml
+                
+                az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
+                kubectl apply -f kube/user-service.yaml
+            env:
+              MAPPED_DB_PASS: $(dbPasswordQA) 
+
+# 4. PROMOTE TO UAT
+
+- stage: Deploy_UAT
+  displayName: 'Deploy to UAT'
+  dependsOn: Deploy_QA
+  variables:
+    sourceAcrName: 'bankingAppRegistryQA'
+    targetAcrName: 'bankingAppRegistryUAT' 
+    aksResourceGroup: 'Banking_Application_UAT'
+    aksName: 'banking-app-aks-uat'
+    dbHost: 'bankinguat-psqlflexibleserver.postgres.database.azure.com'
+  jobs:
+  - deployment: DeployUAT
+    displayName: 'Deploy to UAT AKS'
+    environment: 'uat' 
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: 'Copy Image & Deploy to UAT'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az acr import --name $(targetAcrName) --source $(sourceAcrName).azurecr.io/$(imageName):$(tag) --image $(imageName):$(tag)
+                
+                sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service.yaml
+                sed -i "s|bankingAppRegistryDev.azurecr.io|$(targetAcrName).azurecr.io|g" kube/user-service.yaml
+                sed -i "s/__DB_HOST__/$(dbHost)/g" kube/user-service.yaml
+                sed -i "s|__DB_PASSWORD__|$MAPPED_DB_PASS|g" kube/user-service.yaml
+                
+                az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
+                kubectl apply -f kube/user-service.yaml
+            env:
+              MAPPED_DB_PASS: $(dbPasswordUAT) 
+
+# 5. PROMOTE TO PROD
+ 
+- stage: Deploy_Prod
+  displayName: 'Deploy to Prod'
+  dependsOn: Deploy_UAT
+  variables:
+    sourceAcrName: 'bankingAppRegistryUAT'
+    targetAcrName: 'bankingAppRegistryProd' 
+    aksResourceGroup: 'Banking_Application_Prod'
+    aksName: 'banking-app-aks-prod'
+    dbHost: 'bankingprod-psqlflexibleserver.postgres.database.azure.com'
+  jobs:
+  - deployment: DeployProd
+    displayName: 'Deploy to Prod AKS'
+    environment: 'prod' 
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: 'Copy Image & Deploy to Prod'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az acr import --name $(targetAcrName) --source $(sourceAcrName).azurecr.io/$(imageName):$(tag) --image $(imageName):$(tag)
+                
+                sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service.yaml
+                sed -i "s|bankingAppRegistryDev.azurecr.io|$(targetAcrName).azurecr.io|g" kube/user-service.yaml
+                sed -i "s/__DB_HOST__/$(dbHost)/g" kube/user-service.yaml
+                sed -i "s|__DB_PASSWORD__|$MAPPED_DB_PASS|g" kube/user-service.yaml
+                
+                az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
+                kubectl apply -f kube/user-service.yaml
+            env:
+              MAPPED_DB_PASS: $(dbPasswordProd)
