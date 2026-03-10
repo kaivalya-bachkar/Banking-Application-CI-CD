@@ -22,9 +22,10 @@ variables:
   - name: tag
     value: '$(Build.BuildId)'
   
+  # ACR Names must be STRICTLY LOWERCASE for Docker!
   - ${{ if eq(parameters.environment, 'dev') }}:
     - name: acrName
-      value: 'bankingAppRegistryDev'
+      value: 'bankingappregistrydev' 
     - name: aksResourceGroup
       value: 'Banking_Application_Dev'
     - name: aksName
@@ -32,7 +33,7 @@ variables:
       
   - ${{ if eq(parameters.environment, 'qa') }}:
     - name: acrName
-      value: 'bankingAppRegistryQA'
+      value: 'bankingappregistryqa'
     - name: aksResourceGroup
       value: 'Banking_Application_QA'
     - name: aksName
@@ -40,7 +41,7 @@ variables:
 
   - ${{ if eq(parameters.environment, 'uat') }}:
     - name: acrName
-      value: 'bankingAppRegistryUAT'
+      value: 'bankingappregistryuat'
     - name: aksResourceGroup
       value: 'Banking_Application_UAT'
     - name: aksName
@@ -48,7 +49,7 @@ variables:
 
   - ${{ if eq(parameters.environment, 'prod') }}:
     - name: acrName
-      value: 'bankingAppRegistryProd'
+      value: 'bankingappregistryprod'
     - name: aksResourceGroup
       value: 'Banking_Application_Prod'
     - name: aksName
@@ -67,6 +68,9 @@ stages:
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
+          # SAFETY SWITCH: Stop the script immediately if any command fails!
+          set -e 
+          
           echo "======================================================="
           echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
           echo " ACR: $(acrName)"
@@ -83,10 +87,12 @@ stages:
           echo "--- 2. Injecting Variables into Manifest ---"
           cd ../../ 
           sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/frontend-service.yaml
+          
+          # We check for both camelCase and lowercase base templates just to be safe
           sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service.yaml
+          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service.yaml
           
           echo "--- 3. Deploying to $(aksName) via AKS Run Command ---"
-          # This securely tunnels the command and the file into your private cluster!
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
