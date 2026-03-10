@@ -2,10 +2,11 @@ from flask import Flask, render_template, request, redirect, url_for
 import requests, os
 
 app = Flask(__name__)
-U_URL = os.environ.get("USER_SERVICE_URL", "http://user-cont:5001")
-A_URL = os.environ.get("ACCOUNT_SERVICE_URL", "http://account-cont:5002")
-T_URL = os.environ.get("TRANSACTION_SERVICE_URL", "http://transaction-cont:5003")
-N_URL = os.environ.get("NOTIFICATION_SERVICE_URL", "http://notification-cont:5004")
+
+U_URL = os.environ.get("USER_SERVICE_URL", "http://user-service")
+A_URL = os.environ.get("ACCOUNT_SERVICE_URL", "http://account-service")
+T_URL = os.environ.get("TRANSACTION_SERVICE_URL", "http://transaction-service")
+N_URL = os.environ.get("NOTIFICATION_SERVICE_URL", "http://notification-service")
 
 def fetch(url):
     try: return requests.get(url).json()

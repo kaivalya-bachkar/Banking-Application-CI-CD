@@ -70,10 +70,10 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - USER_SERVICE_URL=http://user-service:5001
-      - ACCOUNT_SERVICE_URL=http://account-service:5002
-      - TRANSACTION_SERVICE_URL=http://transaction-service:5003
-      - NOTIFICATION_SERVICE_URL=http://notification-service:5004
+      USER_SERVICE_URL: http://user-cont:5001
+      ACCOUNT_SERVICE_URL: http://account-cont:5002
+      TRANSACTION_SERVICE_URL: http://transaction-cont:5003
+      NOTIFICATION_SERVICE_URL: http://notification-cont:5004
     depends_on:
       - user-service
       - account-service
