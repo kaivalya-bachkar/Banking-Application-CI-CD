@@ -59,6 +59,10 @@ variable "private_subnet_one_id" {
   type = string
 }
 
+variable "public_subnet_one_id" {
+  type = string
+}
+
 variable "comman_tag" {
   type = string
 }

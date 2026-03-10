@@ -29,6 +29,7 @@ module "acr-aks" {
   aks_node_count        = var.mod_aks_node_count
   aks_vm_size           = var.mod_aks_vm_size
   private_subnet_one_id = module.Network.private_subnet_one_id
+  public_subnet_one_id  = module.Network.public_subnet_one_id
   comman_tag            = var.mod_comman_tag
   depends_on            = [module.Network]
 }

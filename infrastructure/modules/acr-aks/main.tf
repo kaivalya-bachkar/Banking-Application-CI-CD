@@ -3,6 +3,10 @@
 #   location = "West Europe"
 # }
 
+data "http" "my_public_ip" {
+  url = "https://ifconfig.me/ip"
+}
+
 resource "azurerm_container_registry" "acr" {
   name                          = var.acr_name
   resource_group_name           = var.resource-group-name
@@ -10,6 +14,15 @@ resource "azurerm_container_registry" "acr" {
   sku                           = "Premium"
   admin_enabled                 = false
   public_network_access_enabled = false
+  network_rule_set {
+    default_action = "Deny"
+
+    ip_rule {
+      action = "Allow"
+      # Injects the IP fetched by the data block above
+      ip_range = "${data.http.my_public_ip.response_body}/32"
+    }
+  }
 }
 
 resource "azurerm_private_dns_zone" "acr_dns" {
@@ -70,12 +83,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
     load_balancer_sku = "standard"
     outbound_type     = "userAssignedNATGateway"
 
-    service_cidr   = "192.168.0.0/16" # Completely outside your 10.0.0.0/16 VNet
-    dns_service_ip = "192.168.0.10"   # Must be inside the service_cidr above
+    service_cidr   = "192.168.0.0/16"
+    dns_service_ip = "192.168.0.10"
   }
 
   ingress_application_gateway {
-    subnet_id = var.private_subnet_one_id
+    subnet_id = var.public_subnet_one_id
   }
 }
 
@@ -84,4 +97,14 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   role_definition_name             = "AcrPull"
   scope                            = azurerm_container_registry.acr.id
   skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "aks_network_contributor" {
+  scope                = var.vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+
+  depends_on = [
+    azurerm_kubernetes_cluster.aks
+  ]
 }
