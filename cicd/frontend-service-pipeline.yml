@@ -1,4 +1,3 @@
-# Disable automatic triggers so a human has to click 'Run'
 trigger: none 
 
 pool:
@@ -68,10 +67,11 @@ stages:
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
-           
+          echo "======================================================="
           echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
           echo " ACR: $(acrName)"
           echo " AKS: $(aksName)"
+          echo "======================================================="
           
           cd src/frontend-service
           
