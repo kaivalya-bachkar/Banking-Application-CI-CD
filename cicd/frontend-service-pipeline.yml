@@ -85,6 +85,10 @@ stages:
           sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/frontend-service.yaml
           sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service.yaml
           
-          echo "--- 3. Deploying to $(aksName) ---"
-          az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
-          kubectl apply -f kube/frontend-service.yaml
+          echo "--- 3. Deploying to $(aksName) via AKS Run Command ---"
+          # This securely tunnels the command and the file into your private cluster!
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl apply -f frontend-service.yaml" \
+            --file kube/frontend-service.yaml
