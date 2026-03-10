@@ -7,7 +7,7 @@ trigger:
       - terraform/**
 
 pool:
-  vmImage: 'ubuntu-latest' # Using Microsoft-hosted agents for the demo bypass
+  name: 'Default'
 
 variables:
   # This is the name of the Service Connection we will create in ADO
