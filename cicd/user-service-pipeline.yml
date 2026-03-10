@@ -106,7 +106,7 @@ stages:
           
           sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/user-service.yaml
           
-          eecho "--- 4. Deploying to $(aksName) via AKS Run Command ---"
+          echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
