@@ -84,7 +84,7 @@ stages:
             -backend-config="key=$(tf_backend_key)"
 
           echo "Applying Terraform Plan..."
-          terraform apply -auto-approve tfplan
+          terraform apply -auto-approve -var-file="environments/$(tf_environment)/$(tf_environment).tfvars"
 
 
 - stage: TerraformDestroy
