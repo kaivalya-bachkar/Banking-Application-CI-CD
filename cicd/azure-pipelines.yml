@@ -4,25 +4,24 @@ trigger:
       - main
   paths:
     include:
-      - terraform/**
-
+      - infrastructure/** 
 pool:
   name: 'Default'
 
 variables:
-  # This is the name of the Service Connection we will create in ADO
+  
   azureServiceConnection: 'Banking-App-Service-Connection'
   
-  # Terraform Backend Settings (Where the state file lives)
-  tf_backend_rg: 'terraform-state-rg'
-  tf_backend_storage: 'tfstatebankingappdev' # Must be globally unique
+  
+  tf_backend_rg: 'Banking_app_test'
+  tf_backend_storage: 'bankingtfstate'
   tf_backend_container: 'tfstate'
   tf_backend_key: 'dev.terraform.tfstate'
   
-  # Which environment to deploy
   tf_environment: 'dev'
 
 stages:
+
 - stage: TerraformPlan
   displayName: 'Terraform Plan'
   jobs:
@@ -37,15 +36,13 @@ stages:
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          # 1. Export Azure credentials so Terraform can authenticate natively
           export ARM_CLIENT_ID=$servicePrincipalId
           export ARM_CLIENT_SECRET=$servicePrincipalKey
           export ARM_TENANT_ID=$tenantId
           export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-          cd terraform
+          cd infrastructure
           
-          # 2. Initialize Terraform with the Remote Backend
           echo "Initializing Terraform..."
           terraform init \
             -backend-config="resource_group_name=$(tf_backend_rg)" \
@@ -53,9 +50,9 @@ stages:
             -backend-config="container_name=$(tf_backend_container)" \
             -backend-config="key=$(tf_backend_key)"
 
-          # 3. Run the Plan and save the output to a file
           echo "Running Terraform Plan..."
           terraform plan -var-file="environments/$(tf_environment)/$(tf_environment).tfvars" -out=tfplan
+
 
 - stage: TerraformApply
   displayName: 'Terraform Apply'
@@ -78,7 +75,7 @@ stages:
           export ARM_TENANT_ID=$tenantId
           export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-          cd terraform
+          cd infrastructure
           
           terraform init \
             -backend-config="resource_group_name=$(tf_backend_rg)" \
@@ -87,4 +84,50 @@ stages:
             -backend-config="key=$(tf_backend_key)"
 
           echo "Applying Terraform Plan..."
-          terraform apply -auto-approve -var-file="environments/$(tf_environment)/$(tf_environment).tfvars"
+          terraform apply -auto-approve tfplan
+
+
+- stage: TerraformDestroy
+  displayName: 'Terraform Destroy'
+  dependsOn: TerraformApply
+  condition: succeeded()
+  jobs:
+  
+  - job: WaitForDestroyApproval
+    displayName: 'Wait for Human Approval to Destroy'
+    pool: server 
+    timeoutInMinutes: 4320 
+    steps:
+    - task: ManualValidation@0
+      inputs:
+        notifyUsers: ''
+        instructions: 'WARNING: Approve this step to completely DESTROY the Dev infrastructure.'
+
+  - job: DestroyJob
+    displayName: 'Destroy Infrastructure'
+    dependsOn: WaitForDestroyApproval
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Run Terraform Init & Destroy'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        addSpnToEnvironment: true
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          export ARM_CLIENT_ID=$servicePrincipalId
+          export ARM_CLIENT_SECRET=$servicePrincipalKey
+          export ARM_TENANT_ID=$tenantId
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+          cd infrastructure
+
+          # Re-initialize the backend
+          terraform init \
+            -backend-config="resource_group_name=$(tf_backend_rg)" \
+            -backend-config="storage_account_name=$(tf_backend_storage)" \
+            -backend-config="container_name=$(tf_backend_container)" \
+            -backend-config="key=$(tf_backend_key)"
+
+          echo "Destroying Infrastructure..."
+          terraform destroy -auto-approve -var-file="environments/$(tf_environment)/$(tf_environment).tfvars"
