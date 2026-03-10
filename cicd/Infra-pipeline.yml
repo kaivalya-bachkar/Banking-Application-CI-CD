@@ -22,57 +22,68 @@ parameters:
       - apply
       - destroy
 
-# We use conditional logic to fix the redundant naming!
 variables:
   - name: azureServiceConnection
     value: 'Banking-App-Service-Connection'
-  - name: displayAction
-    ${{ if eq(parameters.action, 'plan') }}:
-      value: 'Init + Plan'
-    ${{ if eq(parameters.action, 'apply') }}:
-      value: 'Init + Plan + Apply'
-    ${{ if eq(parameters.action, 'destroy') }}:
-      value: 'Init + Plan + Destroy'
 
-jobs:
-- job: TerraformInfra
-  # This will now display perfectly: "Init + Plan for dev" or "Init + Plan + Apply for qa"
-  displayName: '${{ variables.displayAction }} for ${{ parameters.environment }}'
-  steps:
-  - task: AzureCLI@2
-    displayName: 'Execute Terraform'
-    inputs:
-      azureSubscription: $(azureServiceConnection)
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        cd infrastructure
-        
-        
-        echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
-        
-        terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
-        
-        echo " STEP 2: RUNNING TERRAFORM PLAN"
-        
-        if [ "${{ parameters.action }}" == "destroy" ]; then
-          terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
-        else
-          terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
-        fi
-        
-        echo " STEP 3: RUNNING TERRAFORM ${{ parameters.action }}"
-        
-        if [ "${{ parameters.action }}" == "apply" ]; then
+stages:
+- stage: TerraformPlan
+  displayName: 'Init + Plan'
+  jobs:
+  - job: PlanJob
+    displayName: 'Plan for ${{ parameters.environment }}'
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Execute Terraform Plan'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          cd infrastructure
           
-          terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+          echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+          terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
           
-        elif [ "${{ parameters.action }}" == "destroy" ]; then
-          
-          terraform destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
-          
-        elif [ "${{ parameters.action }}" == "plan" ]; then
-          
-          echo "Plan complete. No further action requested."
-          
-        fi
+          echo " STEP 2: RUNNING TERRAFORM PLAN"
+          if [ "${{ parameters.action }}" == "destroy" ]; then
+            terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+          else
+            terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+          fi
+ 
+- stage: TerraformExecute
+  displayName: 'Execute ${{ parameters.action }}'
+  dependsOn: TerraformPlan
+  condition: and(succeeded(), ne('${{ parameters.action }}', 'plan'))
+  jobs:
+  - deployment: ExecuteJob
+    displayName: 'Apply/Destroy for ${{ parameters.environment }}'
+    environment: 'infra-${{ parameters.environment }}' 
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self 
+          - task: AzureCLI@2
+            displayName: 'Execute Terraform ${{ parameters.action }}'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                cd infrastructure
+                
+                echo " RE-INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+                terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
+                
+                echo " STEP 3: RUNNING TERRAFORM ${{ parameters.action }}"
+                if [ "${{ parameters.action }}" == "apply" ]; then
+                  
+                  terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+                  
+                elif [ "${{ parameters.action }}" == "destroy" ]; then
+                  
+                  terraform destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+                  
+                fi
