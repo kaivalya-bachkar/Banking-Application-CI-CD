@@ -62,3 +62,10 @@ resource "azurerm_postgresql_flexible_server" "postgres_db" {
   depends_on = [azurerm_private_dns_zone_virtual_network_link.db_dns_link]
 
 }
+
+resource "azurerm_postgresql_flexible_server_database" "banking_db" {
+  name      = "banking_db"
+  server_id = azurerm_postgresql_flexible_server.postgres_db.id
+  collation = "en_US.utf8"
+  charset   = "utf8"
+}
