@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: account-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: account-service
+  template:
+    metadata:
+      labels:
+        app: account-service
+    spec:
+      containers:
+      - name: account-service
+        image: bankingappregistrydev.azurecr.io/account-service:__IMAGE_TAG__
+        ports:
+        - containerPort: 5002 
+        env:
+        - name: DB_HOST
+          value: "__DB_HOST__" 
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "__DB_PASSWORD__" 
+        - name: DB_NAME
+          value: banking_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: account-service
+spec:
+  type: ClusterIP 
+  selector:
+    app: account-service
+  ports:
+    - protocol: TCP
+      port: 80 
+      targetPort: 5002

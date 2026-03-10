@@ -18,7 +18,7 @@ variables:
   - name: azureServiceConnection
     value: 'Banking-App-Service-Connection'
   - name: imageName
-    value: 'user-service'
+    value: 'account-service'
   
   # ALL ACR NAMES ARE NOW STRICTLY LOWERCASE
   - ${{ if eq(parameters.environment, 'dev') }}:
@@ -63,7 +63,7 @@ variables:
 
 stages:
 - stage: BuildAndDeploy
-  displayName: 'Deploy User Service to ${{ parameters.environment }}'
+  displayName: 'Deploy Account Service to ${{ parameters.environment }}'
   jobs:
   - job: BuildPushDeploy
     steps:
@@ -85,7 +85,7 @@ stages:
           echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
           echo " DB HOST: $(dbHost)"
           
-          cd src/user-service
+          cd src/account-service
           
           echo "--- 1. Building Image for ${{ parameters.environment }} ---"
           az acr login --name $(acrName)
@@ -106,21 +106,21 @@ stages:
           
           echo "--- 3. Injecting Variables into Manifest ---"
           cd ../../ 
-          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service.yaml
+          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/account-service.yaml
           
           # Safety net: replaces the ACR name regardless of how it's capitalized in your base file
-          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/user-service.yaml
-          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/user-service.yaml
+          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/account-service.yaml
+          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/account-service.yaml
           
-          sed -i "s/__DB_HOST__/$(dbHost)/g" kube/user-service.yaml
-          sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/user-service.yaml
+          sed -i "s/__DB_HOST__/$(dbHost)/g" kube/account-service.yaml
+          sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/account-service.yaml
           
           echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl apply -f user-service.yaml" \
-            --file kube/user-service.yaml
+            --command "kubectl apply -f account-service.yaml" \
+            --file kube/account-service.yaml
       
       env:
         DB_PASS_DEV: $(dbPasswordDev)

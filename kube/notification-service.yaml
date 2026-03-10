@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+      - name: notification-service
+        image: bankingappregistrydev.azurecr.io/notification-service:__IMAGE_TAG__
+        ports:
+        - containerPort: 5004 
+        env:
+        - name: DB_HOST
+          value: "__DB_HOST__" 
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "__DB_PASSWORD__" 
+        - name: DB_NAME
+          value: banking_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+spec:
+  type: ClusterIP 
+  selector:
+    app: notification-service
+  ports:
+    - protocol: TCP
+      port: 80 
+      targetPort: 5004

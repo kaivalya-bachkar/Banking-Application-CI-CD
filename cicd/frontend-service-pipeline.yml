@@ -19,8 +19,7 @@ variables:
     value: 'Banking-App-Service-Connection'
   - name: imageName
     value: 'frontend-service'
-  - name: tag
-    value: '$(Build.BuildId)'
+  # The 'tag' variable was removed from here. It is now dynamically generated in the steps below!
   
   # ACR Names must be STRICTLY LOWERCASE for Docker!
   - ${{ if eq(parameters.environment, 'dev') }}:
@@ -61,6 +60,13 @@ stages:
   jobs:
   - job: BuildPushDeploy
     steps:
+    - bash: |
+        SHORT_HASH=${BUILD_SOURCEVERSION:0:8}
+        echo "Git Commit: $BUILD_SOURCEVERSION"
+        echo "Short Hash: $SHORT_HASH"
+        echo "##vso[task.setvariable variable=tag]$SHORT_HASH"
+      displayName: 'Set Image Tag to Short Commit Hash'
+      
     - task: AzureCLI@2
       displayName: 'Build, Push, and Deploy'
       inputs:
