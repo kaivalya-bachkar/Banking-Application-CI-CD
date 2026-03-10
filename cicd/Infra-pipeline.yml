@@ -27,7 +27,7 @@ variables:
 
 jobs:
 - job: TerraformInfra
-  displayName: 'Init + ${{ parameters.action }} for ${{ parameters.environment }}'
+  displayName: 'Init + Plan + ${{ parameters.action }} for ${{ parameters.environment }}'
   steps:
   - task: AzureCLI@2
     displayName: 'Execute Terraform'
@@ -39,20 +39,30 @@ jobs:
         cd infrastructure
         
         echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+         
         terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
-        
-        echo " STEP 2: RUNNING TERRAFORM ${{ parameters.action }}"
-        
-        if [ "${{ parameters.action }}" == "plan" ]; then
-          
+         
+        echo " STEP 2: RUNNING TERRAFORM PLAN"
+         
+        # If we are destroying, we want the plan to specifically show what will be deleted
+        if [ "${{ parameters.action }}" == "destroy" ]; then
+          terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+        else
           terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
-          
-        elif [ "${{ parameters.action }}" == "apply" ]; then
+        fi
+        
+        echo " STEP 3: RUNNING TERRAFORM ${{ parameters.action }}"
+         
+        if [ "${{ parameters.action }}" == "apply" ]; then
           
           terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
           
         elif [ "${{ parameters.action }}" == "destroy" ]; then
           
           terraform destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+          
+        elif [ "${{ parameters.action }}" == "plan" ]; then
+          
+          echo "Plan complete. No further action requested."
           
         fi
