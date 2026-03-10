@@ -24,7 +24,7 @@ variables:
   
   - ${{ if eq(parameters.environment, 'dev') }}:
     - name: acrName
-      value: 'bankingAppRegistryDev'
+      value: 'bankingappregistrydev'
     - name: aksResourceGroup
       value: 'Banking_Application_Dev'
     - name: aksName
