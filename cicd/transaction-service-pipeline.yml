@@ -20,10 +20,11 @@ variables:
   - name: imageName
     value: 'transaction-service'
   
-  # ALL ACR NAMES ARE NOW STRICTLY LOWERCASE
   - ${{ if eq(parameters.environment, 'dev') }}:
     - name: acrName
       value: 'bankingappregistrydev'
+    - name: sourceAcrName
+      value: 'none' 
     - name: aksResourceGroup
       value: 'Banking_Application_Dev'
     - name: aksName
@@ -34,6 +35,8 @@ variables:
   - ${{ if eq(parameters.environment, 'qa') }}:
     - name: acrName
       value: 'bankingappregistryqa'
+    - name: sourceAcrName
+      value: 'bankingappregistrydev' 
     - name: aksResourceGroup
       value: 'Banking_Application_QA'
     - name: aksName
@@ -44,6 +47,8 @@ variables:
   - ${{ if eq(parameters.environment, 'uat') }}:
     - name: acrName
       value: 'bankingappregistryuat'
+    - name: sourceAcrName
+      value: 'bankingappregistryqa' 
     - name: aksResourceGroup
       value: 'Banking_Application_UAT'
     - name: aksName
@@ -54,6 +59,8 @@ variables:
   - ${{ if eq(parameters.environment, 'prod') }}:
     - name: acrName
       value: 'bankingappregistryprod'
+    - name: sourceAcrName
+      value: 'bankingappregistryuat' 
     - name: aksResourceGroup
       value: 'Banking_Application_Prod'
     - name: aksName
@@ -75,22 +82,41 @@ stages:
       displayName: 'Set Image Tag to Short Commit Hash'
       
     - task: AzureCLI@2
-      displayName: 'Build, Push, and Deploy'
+      displayName: 'Build/Promote, Push, and Deploy'
       inputs:
         azureSubscription: $(azureServiceConnection)
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set -e 
+          
+          echo "======================================================="
           echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
+          echo " TARGET ACR: $(acrName)"
+          echo " SOURCE ACR: $(sourceAcrName)"
+          echo " AKS: $(aksName)"
           echo " DB HOST: $(dbHost)"
+          echo "======================================================="
           
           cd src/transaction-service
           
-          echo "--- 1. Building Image for ${{ parameters.environment }} ---"
-          az acr login --name $(acrName)
-          docker build -t $(acrName).azurecr.io/transaction-service:$(tag) .
-          docker push $(acrName).azurecr.io/transaction-service:$(tag)
+          echo "--- 1. Handling Image for ${{ parameters.environment }} ---"
+          if [ "${{ parameters.environment }}" == "dev" ]; then
+            echo "Environment is DEV. Building a fresh image from source code..."
+            az acr login --name $(acrName)
+            docker build -t $(acrName).azurecr.io/$(imageName):$(tag) .
+            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+          else
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image..."
+            echo "Pulling image from $(sourceAcrName)..."
+            az acr login --name $(sourceAcrName)
+            docker pull $(sourceAcrName).azurecr.io/$(imageName):$(tag)
+            
+            echo "Retagging and pushing image to $(acrName)..."
+            az acr login --name $(acrName)
+            docker tag $(sourceAcrName).azurecr.io/$(imageName):$(tag) $(acrName).azurecr.io/$(imageName):$(tag)
+            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+          fi
           
           echo "--- 2. Routing the Secret DB Password ---"
           CURRENT_DB_PASS=""

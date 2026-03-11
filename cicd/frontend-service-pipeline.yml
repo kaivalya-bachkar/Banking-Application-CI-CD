@@ -19,12 +19,12 @@ variables:
     value: 'Banking-App-Service-Connection'
   - name: imageName
     value: 'frontend-service'
-  # The 'tag' variable was removed from here. It is now dynamically generated in the steps below!
   
-  # ACR Names must be STRICTLY LOWERCASE for Docker!
   - ${{ if eq(parameters.environment, 'dev') }}:
     - name: acrName
       value: 'bankingappregistrydev' 
+    - name: sourceAcrName
+      value: 'none' 
     - name: aksResourceGroup
       value: 'Banking_Application_Dev'
     - name: aksName
@@ -33,6 +33,8 @@ variables:
   - ${{ if eq(parameters.environment, 'qa') }}:
     - name: acrName
       value: 'bankingappregistryqa'
+    - name: sourceAcrName
+      value: 'bankingappregistrydev'
     - name: aksResourceGroup
       value: 'Banking_Application_QA'
     - name: aksName
@@ -41,6 +43,8 @@ variables:
   - ${{ if eq(parameters.environment, 'uat') }}:
     - name: acrName
       value: 'bankingappregistryuat'
+    - name: sourceAcrName
+      value: 'bankingappregistryqa' 
     - name: aksResourceGroup
       value: 'Banking_Application_UAT'
     - name: aksName
@@ -49,6 +53,8 @@ variables:
   - ${{ if eq(parameters.environment, 'prod') }}:
     - name: acrName
       value: 'bankingappregistryprod'
+    - name: sourceAcrName
+      value: 'bankingappregistryuat' 
     - name: aksResourceGroup
       value: 'Banking_Application_Prod'
     - name: aksName
@@ -68,7 +74,7 @@ stages:
       displayName: 'Set Image Tag to Short Commit Hash'
       
     - task: AzureCLI@2
-      displayName: 'Build, Push, and Deploy'
+      displayName: 'Build/Promote, Push, and Deploy'
       inputs:
         azureSubscription: $(azureServiceConnection)
         scriptType: 'bash'
@@ -79,16 +85,30 @@ stages:
           
           echo "======================================================="
           echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
-          echo " ACR: $(acrName)"
+          echo " TARGET ACR: $(acrName)"
+          echo " SOURCE ACR: $(sourceAcrName)"
           echo " AKS: $(aksName)"
           echo "======================================================="
           
           cd src/frontend-service
           
-          echo "--- 1. Building Image for ${{ parameters.environment }} ---"
-          az acr login --name $(acrName)
-          docker build -t $(acrName).azurecr.io/$(imageName):$(tag) .
-          docker push $(acrName).azurecr.io/$(imageName):$(tag)
+          echo "--- 1. Handling Image for ${{ parameters.environment }} ---"
+          if [ "${{ parameters.environment }}" == "dev" ]; then
+            echo "Environment is DEV. Building a fresh image from source code..."
+            az acr login --name $(acrName)
+            docker build -t $(acrName).azurecr.io/$(imageName):$(tag) .
+            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+          else
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image..."
+            echo "Pulling image from $(sourceAcrName)..."
+            az acr login --name $(sourceAcrName)
+            docker pull $(sourceAcrName).azurecr.io/$(imageName):$(tag)
+            
+            echo "Retagging and pushing image to $(acrName)..."
+            az acr login --name $(acrName)
+            docker tag $(sourceAcrName).azurecr.io/$(imageName):$(tag) $(acrName).azurecr.io/$(imageName):$(tag)
+            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+          fi
           
           echo "--- 2. Injecting Variables into Manifest ---"
           cd ../../ 
@@ -113,7 +133,16 @@ stages:
             --name $(aksName) \
             --command "kubectl apply -f frontend-service.yaml" \
             --file kube/frontend-service/frontend-service.yaml
-
+            
+          echo "Resetting AGIC Pod to fetch fresh Terraform IAM permissions..."
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl delete pod -n kube-system -l app=ingress-appgw"
+            
+          echo "Waiting 20 seconds for AGIC to reboot..."
+          sleep 20
+            
           echo "Applying Ingress..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
