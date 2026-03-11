@@ -3,10 +3,17 @@ from flask_sqlalchemy import SQLAlchemy
 import os, requests
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/banking_db')
+
+db_user = os.environ.get('DB_USER', 'postgres')
+db_password = os.environ.get('DB_PASSWORD', 'postgres')
+db_host = os.environ.get('DB_HOST', 'localhost')
+db_port = os.environ.get('DB_PORT', '5432')
+db_name = os.environ.get('DB_NAME', 'banking_db')
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 db = SQLAlchemy(app)
 
-USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://127.0.0.1:5001")
+USER_SERVICE_URL = os.environ.get("USER_SERVICE_URL", "http://user-service")
 
 class Account(db.Model):
     __tablename__ = 'accounts'
