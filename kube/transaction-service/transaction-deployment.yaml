@@ -28,16 +28,3 @@ spec:
           value: "__DB_PASSWORD__" 
         - name: DB_NAME
           value: banking_db
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: transaction-service
-spec:
-  type: ClusterIP 
-  selector:
-    app: transaction-service
-  ports:
-    - protocol: TCP
-      port: 80 
-      targetPort: 5003

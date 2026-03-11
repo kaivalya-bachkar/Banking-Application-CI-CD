@@ -92,15 +92,19 @@ stages:
           
           echo "--- 2. Injecting Variables into Manifest ---"
           cd ../../ 
-          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/frontend-service.yaml
+          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/frontend-service/frontend-deployment.yaml
           
           # We check for both camelCase and lowercase base templates just to be safe
-          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service.yaml
-          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service.yaml
+          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
+          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
           
           echo "--- 3. Deploying to $(aksName) via AKS Run Command ---"
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
+            --command "kubectl apply -f frontend-deployment.yaml" \
+            --file kube/frontend-service/frontend-deployment.yaml
             --command "kubectl apply -f frontend-service.yaml" \
-            --file kube/frontend-service.yaml
+            --file kube/frontend-service/frontend-service.yaml
+            --command "kubectl apply -f ingress.yaml" \
+            --file kube/frontend-service/ingress.yaml

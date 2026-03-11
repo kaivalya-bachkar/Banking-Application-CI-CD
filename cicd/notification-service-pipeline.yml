@@ -106,21 +106,23 @@ stages:
           
           echo "--- 3. Injecting Variables into Manifest ---"
           cd ../../ 
-          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/notification-service.yaml
+          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/notification-service/notification-deployment.yaml
           
           # Safety net: replaces the ACR name regardless of how it's capitalized in your base file
-          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/notification-service.yaml
-          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/notification-service.yaml
+          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/notification-service/notification-deployment.yaml
+          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/notification-service/notification-deployment.yaml
           
-          sed -i "s/__DB_HOST__/$(dbHost)/g" kube/notification-service.yaml
-          sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/notification-service.yaml
+          sed -i "s/__DB_HOST__/$(dbHost)/g" kube/notification-service/notification-deployment.yaml
+          sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/notification-service/notification-deployment.yaml
           
           echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
+            --command "kubectl apply -f notification-deployment.yaml" \
+            --file kube/notification-service/notification-deployment.yaml
             --command "kubectl apply -f notification-service.yaml" \
-            --file kube/notification-service.yaml
+            --file kube/notification-service/notification-service.yaml
       
       env:
         DB_PASS_DEV: $(dbPasswordDev)
