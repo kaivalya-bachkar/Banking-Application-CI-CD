@@ -3,9 +3,11 @@ kind: Ingress
 metadata:
   name: banking-app-ingress
   annotations:
-    appgw.ingress.kubernetes.io/cookie-based-affinity:
+    kubernetes.io/ingress.class: azure/application-gateway
+    appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+    appgw.ingress.kubernetes.io/health-probe-status-codes: "200-399, 404"
 spec:
-  ingressClassName: azure-application-gateway 
+  ingressClassName: azure-application-gateway
   rules:
   - http:
       paths:
