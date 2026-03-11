@@ -99,12 +99,24 @@ stages:
           sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
           
           echo "--- 3. Deploying to $(aksName) via AKS Run Command ---"
+          
+          echo "Applying Deployment..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
             --command "kubectl apply -f frontend-deployment.yaml" \
             --file kube/frontend-service/frontend-deployment.yaml
+            
+          echo "Applying Service..."
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
             --command "kubectl apply -f frontend-service.yaml" \
             --file kube/frontend-service/frontend-service.yaml
+
+          echo "Applying Ingress..."
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
             --command "kubectl apply -f ingress.yaml" \
             --file kube/frontend-service/ingress.yaml

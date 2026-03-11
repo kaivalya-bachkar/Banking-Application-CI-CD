@@ -116,11 +116,18 @@ stages:
           sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/notification-service/notification-deployment.yaml
           
           echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
+          
+          echo "Applying Deployment..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
             --command "kubectl apply -f notification-deployment.yaml" \
             --file kube/notification-service/notification-deployment.yaml
+            
+          echo "Applying Service..."
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
             --command "kubectl apply -f notification-service.yaml" \
             --file kube/notification-service/notification-service.yaml
       
