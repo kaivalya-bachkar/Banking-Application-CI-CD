@@ -108,3 +108,16 @@ resource "azurerm_role_assignment" "aks_network_contributor" {
     azurerm_kubernetes_cluster.aks
   ]
 }
+
+data "azurerm_user_assigned_identity" "agic_id" {
+  name                = "ingress-appgw-identity"
+  resource_group_name = azurerm_kubernetes_cluster.aks.node_resource_group
+  depends_on          = [azurerm_kubernetes_cluster.aks]
+}
+
+resource "azurerm_role_assignment" "agic_network_contributor" {
+  scope                = var.vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = data.azurerm_user_assigned_identity.agic_id.principal_id
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
