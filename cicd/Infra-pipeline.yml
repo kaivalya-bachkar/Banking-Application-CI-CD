@@ -26,9 +26,73 @@ variables:
   - name: azureServiceConnection
     value: 'Banking-App-Service-Connection'
 
+# stages:
+# - stage: TerraformPlan
+#   displayName: 'Init + Plan'
+#   jobs:
+#   - job: PlanJob
+#     displayName: 'Plan for ${{ parameters.environment }}'
+#     steps:
+#     - task: AzureCLI@2
+#       displayName: 'Execute Terraform Plan'
+#       inputs:
+#         azureSubscription: $(azureServiceConnection)
+#         scriptType: 'bash'
+#         scriptLocation: 'inlineScript'
+#         inlineScript: |
+#           cd infrastructure
+          
+#           echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+#           terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
+          
+#           echo " STEP 2: RUNNING TERRAFORM PLAN"
+#           if [ "${{ parameters.action }}" == "destroy" ]; then
+#             terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+#           else
+#             terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+#           fi
+ 
+# - stage: TerraformExecute
+#   displayName: 'Execute ${{ parameters.action }}'
+#   dependsOn: TerraformPlan
+#   condition: and(succeeded(), ne('${{ parameters.action }}', 'plan'))
+#   jobs:
+#   - deployment: ExecuteJob
+#     displayName: 'Apply/Destroy for ${{ parameters.environment }}'
+#     environment: 'infra-${{ parameters.environment }}' 
+#     strategy:
+#       runOnce:
+#         deploy:
+#           steps:
+#           - checkout: self 
+#           - task: AzureCLI@2
+#             displayName: 'Execute Terraform ${{ parameters.action }}'
+#             inputs:
+#               azureSubscription: $(azureServiceConnection)
+#               scriptType: 'bash'
+#               scriptLocation: 'inlineScript'
+#               inlineScript: |
+#                 cd infrastructure
+                
+#                 echo " RE-INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+#                 terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
+                
+#                 echo " STEP 3: RUNNING TERRAFORM ${{ parameters.action }}"
+#                 if [ "${{ parameters.action }}" == "apply" ]; then
+                  
+#                   terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+                  
+#                 elif [ "${{ parameters.action }}" == "destroy" ]; then
+                  
+#                   terraform destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
+                  
+#                 fi
+
+
 stages:
 - stage: TerraformPlan
-  displayName: 'Init + Plan'
+  # Makes the UI say "Plan (apply)" or "Plan (destroy)"
+  displayName: 'Plan Phase (${{ parameters.action }})' 
   jobs:
   - job: PlanJob
     displayName: 'Plan for ${{ parameters.environment }}'
@@ -45,26 +109,39 @@ stages:
           echo " STEP 1: INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
           terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
           
-          echo " STEP 2: RUNNING TERRAFORM PLAN"
+          echo " STEP 2: RUNNING TERRAFORM PLAN AND SAVING TO FILE"
           if [ "${{ parameters.action }}" == "destroy" ]; then
-            terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+            # The -out command saves the plan to a file
+            terraform plan -destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -out=main.tfplan
           else
-            terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars"
+            terraform plan -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -out=main.tfplan
           fi
- 
+          
+    # This task packages the plan file and saves it so Stage 2 can use it
+    - publish: $(System.DefaultWorkingDirectory)/infrastructure/main.tfplan
+      artifact: tfplan
+      displayName: 'Publish Plan File'
+
 - stage: TerraformExecute
-  displayName: 'Execute ${{ parameters.action }}'
+  displayName: 'Execute Phase (${{ parameters.action }})'
   dependsOn: TerraformPlan
   condition: and(succeeded(), ne('${{ parameters.action }}', 'plan'))
   jobs:
   - deployment: ExecuteJob
-    displayName: 'Apply/Destroy for ${{ parameters.environment }}'
+    # UI FIX: This will dynamically say "apply dev" or "destroy dev"
+    displayName: '${{ parameters.action }} ${{ parameters.environment }}' 
     environment: 'infra-${{ parameters.environment }}' 
     strategy:
       runOnce:
         deploy:
           steps:
           - checkout: self 
+          
+          # Download the plan file created in Stage 1
+          - download: current
+            artifact: tfplan
+            displayName: 'Download Plan File'
+            
           - task: AzureCLI@2
             displayName: 'Execute Terraform ${{ parameters.action }}'
             inputs:
@@ -74,16 +151,13 @@ stages:
               inlineScript: |
                 cd infrastructure
                 
-                echo " RE-INITIALIZING TERRAFORM FOR ${{ parameters.environment }}"
+                # Move the downloaded plan file into the infrastructure folder
+                mv $(Pipeline.Workspace)/tfplan/main.tfplan .
+                
+                echo " RE-INITIALIZING TERRAFORM (Required for fresh Azure Agent)"
                 terraform init -backend-config="environments/${{ parameters.environment }}/${{ parameters.environment }}-backend.conf" -reconfigure
                 
-                echo " STEP 3: RUNNING TERRAFORM ${{ parameters.action }}"
-                if [ "${{ parameters.action }}" == "apply" ]; then
-                  
-                  terraform apply -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
-                  
-                elif [ "${{ parameters.action }}" == "destroy" ]; then
-                  
-                  terraform destroy -var-file="environments/${{ parameters.environment }}/${{ parameters.environment }}.tfvars" -auto-approve
-                  
-                fi
+                echo " STEP 3: EXECUTING EXACT PLAN FILE"
+                # By passing the plan file, Terraform skips the plan phase entirely!
+                # Note: It automatically knows whether to apply or destroy based on the file.
+                terraform apply "main.tfplan"
