@@ -54,4 +54,3 @@ def get_all_transactions():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5003)
-echo "# Forcing a new Docker build" >> src/transaction-service/app.py
