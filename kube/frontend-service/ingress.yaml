@@ -16,6 +16,39 @@ spec:
   - host: __DOMAIN_NAME__ 
     http:
       paths:
+      
+      - path: /api/user
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 80
+
+      - path: /api/account
+        pathType: Prefix
+        backend:
+          service:
+            name: account-service
+            port:
+              number: 80
+
+      - path: /api/transaction
+        pathType: Prefix
+        backend:
+          service:
+            name: transaction-service
+            port:
+              number: 80
+
+      - path: /api/notification
+        pathType: Prefix
+        backend:
+          service:
+            name: notification-service
+            port:
+              number: 80
+
       - path: /
         pathType: Prefix
         backend:

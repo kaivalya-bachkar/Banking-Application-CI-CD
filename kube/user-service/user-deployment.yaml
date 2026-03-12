@@ -14,11 +14,10 @@ spec:
     spec:
       containers:
       - name: user-service
-        image: bankingAppRegistryDev.azurecr.io/user-service:__IMAGE_TAG__
+        image: __IMAGE__
         ports:
         - containerPort: 5001 
         env:
-        
         - name: DB_HOST
           value: "__DB_HOST__" 
         - name: DB_PORT
@@ -28,4 +27,4 @@ spec:
         - name: DB_PASSWORD
           value: "__DB_PASSWORD__" 
         - name: DB_NAME
-          value: banking_db
+          value: "__DB_NAME__"

@@ -3,7 +3,6 @@ kind: Service
 metadata:
   name: user-service
 spec:
-  
   type: ClusterIP 
   selector:
     app: user-service

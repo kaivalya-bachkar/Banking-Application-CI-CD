@@ -19,52 +19,40 @@ variables:
     value: 'Banking-App-Service-Connection'
   - name: imageName
     value: 'frontend-service'
-  
+  - name: acrName
+    value: 'bankingappregistrydev' 
+  - name: aksResourceGroup
+    value: 'Banking_Application_Dev'
+  - name: aksName
+    value: 'banking-app-aks-dev'
+
   - ${{ if eq(parameters.environment, 'dev') }}:
-    - name: acrName
-      value: 'bankingappregistrydev' 
-    - name: sourceAcrName
-      value: 'none' 
-    - name: aksResourceGroup
-      value: 'Banking_Application_Dev'
-    - name: aksName
-      value: 'banking-app-aks-dev'
+    - name: namespace
+      value: 'dev'
     - name: domainName
       value: 'www.globalbankdev.local'
-      
+
   - ${{ if eq(parameters.environment, 'qa') }}:
-    - name: acrName
-      value: 'bankingappregistryqa'
-    - name: sourceAcrName
-      value: 'bankingappregistrydev'
-    - name: aksResourceGroup
-      value: 'Banking_Application_QA'
-    - name: aksName
-      value: 'banking-app-aks-qa'
+    - name: namespace
+      value: 'qa'
+    - name: sourceNamespace
+      value: 'dev'
     - name: domainName
       value: 'www.globalbankqa.local'
 
   - ${{ if eq(parameters.environment, 'uat') }}:
-    - name: acrName
-      value: 'bankingappregistryuat'
-    - name: sourceAcrName
-      value: 'bankingappregistryqa' 
-    - name: aksResourceGroup
-      value: 'Banking_Application_UAT'
-    - name: aksName
-      value: 'banking-app-aks-uat'
+    - name: namespace
+      value: 'uat'
+    - name: sourceNamespace
+      value: 'qa'
     - name: domainName
       value: 'www.globalbankuat.local'
 
   - ${{ if eq(parameters.environment, 'prod') }}:
-    - name: acrName
-      value: 'bankingappregistryprod'
-    - name: sourceAcrName
-      value: 'bankingappregistryuat' 
-    - name: aksResourceGroup
-      value: 'Banking_Application_Prod'
-    - name: aksName
-      value: 'banking-app-aks-prod'
+    - name: namespace
+      value: 'prod'
+    - name: sourceNamespace
+      value: 'uat'
     - name: domainName
       value: 'www.globalbankprod.local'
 
@@ -92,74 +80,73 @@ stages:
           set -e 
           
           echo "======================================================="
-          echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
-          echo " TARGET ACR: $(acrName)"
-          echo " SOURCE ACR: $(sourceAcrName)"
-          echo " AKS: $(aksName)"
+          echo " TARGET NAMESPACE: $(namespace)"
+          echo " TARGET DOMAIN: $(domainName)"
+          echo " SHARED ACR: $(acrName)"
+          echo " SHARED AKS: $(aksName)"
           echo "======================================================="
+          
+          echo "--- 0. Ensuring Namespace Exists ---"
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl create namespace $(namespace) --dry-run=client -o yaml | kubectl apply -f -"
           
           cd src/frontend-service
           
-          echo "--- 1. Handling Image for ${{ parameters.environment }} ---"
+          echo "--- 1. Handling Image for $(namespace) ---"
+          az acr login --name $(acrName)
+          
           if [ "${{ parameters.environment }}" == "dev" ]; then
             echo "Environment is DEV. Building a fresh image from source code..."
-            az acr login --name $(acrName)
-            docker build -t $(acrName).azurecr.io/$(imageName):$(tag) .
-            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+            docker build -t $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag) .
+            docker push $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)
           else
-            echo "Environment is ${{ parameters.environment }}. Promoting tested image..."
-            echo "Pulling image from $(sourceAcrName)..."
-            az acr login --name $(sourceAcrName)
-            docker pull $(sourceAcrName).azurecr.io/$(imageName):$(tag)
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image from $(sourceNamespace)..."
+            docker pull $(acrName).azurecr.io/$(sourceNamespace)/$(imageName):$(tag)
             
-            echo "Retagging and pushing image to $(acrName)..."
-            az acr login --name $(acrName)
-            docker tag $(sourceAcrName).azurecr.io/$(imageName):$(tag) $(acrName).azurecr.io/$(imageName):$(tag)
-            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+            echo "Retagging and pushing image to $(namespace) folder..."
+            docker tag $(acrName).azurecr.io/$(sourceNamespace)/$(imageName):$(tag) $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)
+            docker push $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)
           fi
           
-          echo "--- 2. Injecting Variables into Manifest ---"
+          echo "--- 2. Injecting Variables into Manifests ---"
           cd ../../ 
-          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/frontend-service/frontend-deployment.yaml
           
-          # We check for both camelCase and lowercase base templates just to be safe
-          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
-          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
+          # Simplified replacement: just target __IMAGE__ directly like the backend!
+          sed -i "s|__IMAGE__|$(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)|g" kube/frontend-service/frontend-deployment.yaml
+          sed -i "s|__DOMAIN_NAME__|$(domainName)|g" kube/frontend-service/ingress.yaml
           
           echo "--- 3. Automating TLS Certificate Generation ---"
-          # Notice how /CN= now uses the dynamic $(domainName) variable!
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -out globalbank-tls.crt \
             -keyout globalbank-tls.key \
             -subj "/CN=$(domainName)/O=Global Bank"
             
-          echo "Injecting TLS Secret into AKS..."
+          echo "Injecting TLS Secret into AKS Namespace: $(namespace)..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl create secret tls globalbank-tls-secret --key globalbank-tls.key --cert globalbank-tls.crt --dry-run=client -o yaml | kubectl apply -f -" \
+            --command "kubectl create secret tls globalbank-tls-secret --key globalbank-tls.key --cert globalbank-tls.crt -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
             --file globalbank-tls.key \
             --file globalbank-tls.crt
             
-          echo "--- 4. Injecting Domain Name into Ingress ---"
-          sed -i "s/__DOMAIN_NAME__/$(domainName)/g" kube/frontend-service/ingress.yaml
-            
-          echo "--- 5. Deploying to $(aksName) via AKS Run Command ---"
+          echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
           echo "Applying Deployment..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl apply -f frontend-deployment.yaml" \
+            --command "kubectl apply -f frontend-deployment.yaml -n $(namespace)" \
             --file kube/frontend-service/frontend-deployment.yaml
             
           echo "Applying Service..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl apply -f frontend-service.yaml" \
+            --command "kubectl apply -f frontend-service.yaml -n $(namespace)" \
             --file kube/frontend-service/frontend-service.yaml
             
-          echo "Resetting AGIC Pod to fetch fresh Terraform IAM permissions..."
+          echo "Resetting AGIC Pod to fetch fresh routing rules..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
@@ -172,5 +159,5 @@ stages:
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl apply -f ingress.yaml" \
+            --command "kubectl apply -f ingress.yaml -n $(namespace)" \
             --file kube/frontend-service/ingress.yaml

@@ -1,4 +1,10 @@
-trigger: none 
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - user-service/*
 
 pool:
   name: 'Default'
@@ -16,57 +22,47 @@ parameters:
 
 variables:
   - name: azureServiceConnection
-    value: 'Banking-App-Service-Connection'
+    value: 'Banking-App-Service-Connection' 
   - name: imageName
     value: 'user-service'
-  
+  - name: acrName
+    value: 'bankingappregistrydev' 
+  - name: aksResourceGroup
+    value: 'Banking_Application_Dev'
+  - name: aksName
+    value: 'banking-app-aks-dev'
+  - name: dbHost
+    value: 'bankingdev-psqlflexibleserver.postgres.database.azure.com'
+
   - ${{ if eq(parameters.environment, 'dev') }}:
-    - name: acrName
-      value: 'bankingappregistrydev'
-    - name: sourceAcrName
-      value: 'none' 
-    - name: aksResourceGroup
-      value: 'Banking_Application_Dev'
-    - name: aksName
-      value: 'banking-app-aks-dev'
-    - name: dbHost
-      value: 'bankingdev-psqlflexibleserver.postgres.database.azure.com'
-      
+    - name: namespace
+      value: 'dev'
+    - name: dbName
+      value: 'banking_db_dev'
+
   - ${{ if eq(parameters.environment, 'qa') }}:
-    - name: acrName
-      value: 'bankingappregistryqa'
-    - name: sourceAcrName
-      value: 'bankingappregistrydev' 
-    - name: aksResourceGroup
-      value: 'Banking_Application_QA'
-    - name: aksName
-      value: 'banking-app-aks-qa'
-    - name: dbHost
-      value: 'bankingqa-psqlflexibleserver.postgres.database.azure.com'
+    - name: namespace
+      value: 'qa'
+    - name: sourceNamespace
+      value: 'dev'
+    - name: dbName
+      value: 'banking_db_qa'
 
   - ${{ if eq(parameters.environment, 'uat') }}:
-    - name: acrName
-      value: 'bankingappregistryuat'
-    - name: sourceAcrName
-      value: 'bankingappregistryqa'
-    - name: aksResourceGroup
-      value: 'Banking_Application_UAT'
-    - name: aksName
-      value: 'banking-app-aks-uat'
-    - name: dbHost
-      value: 'bankinguat-psqlflexibleserver.postgres.database.azure.com'
+    - name: namespace
+      value: 'uat'
+    - name: sourceNamespace
+      value: 'qa'
+    - name: dbName
+      value: 'banking_db_uat'
 
   - ${{ if eq(parameters.environment, 'prod') }}:
-    - name: acrName
-      value: 'bankingappregistryprod'
-    - name: sourceAcrName
-      value: 'bankingappregistryuat' 
-    - name: aksResourceGroup
-      value: 'Banking_Application_Prod'
-    - name: aksName
-      value: 'banking-app-aks-prod'
-    - name: dbHost
-      value: 'bankingprod-psqlflexibleserver.postgres.database.azure.com'
+    - name: namespace
+      value: 'prod'
+    - name: sourceNamespace
+      value: 'uat'
+    - name: dbName
+      value: 'banking_db_prod'
 
 stages:
 - stage: BuildAndDeploy
@@ -88,77 +84,69 @@ stages:
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
+          # SAFETY SWITCH: Stop the script immediately if any command fails!
           set -e 
           
           echo "======================================================="
-          echo " TARGET ENVIRONMENT: ${{ parameters.environment }}"
-          echo " TARGET ACR: $(acrName)"
-          echo " SOURCE ACR: $(sourceAcrName)"
-          echo " AKS: $(aksName)"
-          echo " DB HOST: $(dbHost)"
+          echo " TARGET NAMESPACE: $(namespace)"
+          echo " SHARED ACR: $(acrName)"
+          echo " SHARED AKS: $(aksName)"
+          echo " TARGET DATABASE: $(dbName)"
           echo "======================================================="
+          
+          echo "--- 0. Ensuring Namespace Exists ---"
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl create namespace $(namespace) --dry-run=client -o yaml | kubectl apply -f -"
           
           cd src/user-service
           
-          echo "--- 1. Handling Image for ${{ parameters.environment }} ---"
+          echo "--- 1. Handling Image for $(namespace) ---"
+          az acr login --name $(acrName)
+          
           if [ "${{ parameters.environment }}" == "dev" ]; then
             echo "Environment is DEV. Building a fresh image from source code..."
-            az acr login --name $(acrName)
-            docker build -t $(acrName).azurecr.io/$(imageName):$(tag) .
-            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+            docker build -t $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag) .
+            docker push $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)
           else
-            echo "Environment is ${{ parameters.environment }}. Promoting tested image..."
-            echo "Pulling image from $(sourceAcrName)..."
-            az acr login --name $(sourceAcrName)
-            docker pull $(sourceAcrName).azurecr.io/$(imageName):$(tag)
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image from $(sourceNamespace)..."
+            docker pull $(acrName).azurecr.io/$(sourceNamespace)/$(imageName):$(tag)
             
-            echo "Retagging and pushing image to $(acrName)..."
-            az acr login --name $(acrName)
-            docker tag $(sourceAcrName).azurecr.io/$(imageName):$(tag) $(acrName).azurecr.io/$(imageName):$(tag)
-            docker push $(acrName).azurecr.io/$(imageName):$(tag)
+            echo "Retagging and pushing image to $(namespace) folder..."
+            docker tag $(acrName).azurecr.io/$(sourceNamespace)/$(imageName):$(tag) $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)
+            docker push $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)
           fi
           
-          echo "--- 2. Routing the Secret DB Password ---"
-          CURRENT_DB_PASS=""
-          if [ "${{ parameters.environment }}" == "dev" ]; then
-            CURRENT_DB_PASS=$DB_PASS_DEV
-          elif [ "${{ parameters.environment }}" == "qa" ]; then
-            CURRENT_DB_PASS=$DB_PASS_QA
-          elif [ "${{ parameters.environment }}" == "uat" ]; then
-            CURRENT_DB_PASS=$DB_PASS_UAT
-          elif [ "${{ parameters.environment }}" == "prod" ]; then
-            CURRENT_DB_PASS=$DB_PASS_PROD
-          fi
-          
-          echo "--- 3. Injecting Variables into Manifest ---"
+          echo "--- 2. Injecting Variables into Manifests ---"
           cd ../../ 
-          sed -i "s/__IMAGE_TAG__/$(tag)/g" kube/user-service/user-deployment.yaml
           
-          # Safety net: replaces the ACR name regardless of how it's capitalized in your base file
-          sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/user-service/user-deployment.yaml
-          sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/user-service/user-deployment.yaml
+          sed -i "s|__IMAGE__|$(acrName).azurecr.io/$(namespace)/$(imageName):$(tag)|g" kube/user-service/user-deployment.yaml
+          sed -i "s|__DB_HOST__|$(dbHost)|g" kube/user-service/user-deployment.yaml
+          sed -i "s|__DB_PASSWORD__|$(dbPassword)|g" kube/user-service/user-deployment.yaml
+          sed -i "s|__DB_NAME__|$(dbName)|g" kube/user-service/user-deployment.yaml
           
-          sed -i "s/__DB_HOST__/$(dbHost)/g" kube/user-service/user-deployment.yaml
-          sed -i "s|__DB_PASSWORD__|$CURRENT_DB_PASS|g" kube/user-service/user-deployment.yaml
-          
-          echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
-          
+          echo "--- 3. Deploying to $(aksName) via AKS Run Command ---"
           echo "Applying Deployment..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl apply -f user-deployment.yaml" \
+            --command "kubectl apply -f user-deployment.yaml -n $(namespace)" \
             --file kube/user-service/user-deployment.yaml
             
           echo "Applying Service..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl apply -f user-service.yaml" \
+            --command "kubectl apply -f user-service.yaml -n $(namespace)" \
             --file kube/user-service/user-service.yaml
-      
-      env:
-        DB_PASS_DEV: $(dbPasswordDev)
-        DB_PASS_QA: $(dbPasswordQA)
-        DB_PASS_UAT: $(dbPasswordUAT)
-        DB_PASS_PROD: $(dbPasswordProd)
+
+    - task: CmdLine@2
+      displayName: 'Cleanup Local Disk Space'
+      condition: always()
+      inputs:
+        script: |
+          docker rmi $(acrName).azurecr.io/$(namespace)/$(imageName):$(tag) || true
+          if [ "$(sourceNamespace)" != "" ]; then
+            docker rmi $(acrName).azurecr.io/$(sourceNamespace)/$(imageName):$(tag) || true
+          fi

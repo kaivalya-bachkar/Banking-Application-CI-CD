@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: frontend-service
-        image: bankingAppRegistryDev.azurecr.io/frontend-service:__IMAGE_TAG__
+        image: __IMAGE__
         ports:
         - containerPort: 5000
