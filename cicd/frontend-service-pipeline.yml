@@ -118,8 +118,22 @@ stages:
           sed -i "s|bankingAppRegistryDev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
           sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
           
-          echo "--- 3. Deploying to $(aksName) via AKS Run Command ---"
-          
+          echo "--- 3. Automating TLS Certificate Generation ---"
+          # Generate the certificate directly on the ADO build agent
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -out globalbank-tls.crt \
+            -keyout globalbank-tls.key \
+            -subj "/CN=www.globalbank.local/O=Global Bank"
+            
+          echo "Injecting TLS Secret into AKS..."
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl create secret tls globalbank-tls-secret --key globalbank-tls.key --cert globalbank-tls.crt --dry-run=client -o yaml | kubectl apply -f -" \
+            --file globalbank-tls.key \
+            --file globalbank-tls.crt
+            
+          echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
           echo "Applying Deployment..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
