@@ -29,6 +29,8 @@ variables:
       value: 'Banking_Application_Dev'
     - name: aksName
       value: 'banking-app-aks-dev'
+    - name: domainName
+      value: 'www.globalbankdev.local'
       
   - ${{ if eq(parameters.environment, 'qa') }}:
     - name: acrName
@@ -39,6 +41,8 @@ variables:
       value: 'Banking_Application_QA'
     - name: aksName
       value: 'banking-app-aks-qa'
+    - name: domainName
+      value: 'www.globalbankqa.local'
 
   - ${{ if eq(parameters.environment, 'uat') }}:
     - name: acrName
@@ -49,6 +53,8 @@ variables:
       value: 'Banking_Application_UAT'
     - name: aksName
       value: 'banking-app-aks-uat'
+    - name: domainName
+      value: 'www.globalbankuat.local'
 
   - ${{ if eq(parameters.environment, 'prod') }}:
     - name: acrName
@@ -59,6 +65,8 @@ variables:
       value: 'Banking_Application_Prod'
     - name: aksName
       value: 'banking-app-aks-prod'
+    - name: domainName
+      value: 'www.globalbankprod.local'
 
 stages:
 - stage: BuildAndDeploy
@@ -119,11 +127,11 @@ stages:
           sed -i "s|bankingappregistrydev.azurecr.io|$(acrName).azurecr.io|g" kube/frontend-service/frontend-deployment.yaml
           
           echo "--- 3. Automating TLS Certificate Generation ---"
-          # Generate the certificate directly on the ADO build agent
+          # Notice how /CN= now uses the dynamic $(domainName) variable!
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -out globalbank-tls.crt \
             -keyout globalbank-tls.key \
-            -subj "/CN=www.globalbank.local/O=Global Bank"
+            -subj "/CN=$(domainName)/O=Global Bank"
             
           echo "Injecting TLS Secret into AKS..."
           az aks command invoke \
@@ -133,7 +141,10 @@ stages:
             --file globalbank-tls.key \
             --file globalbank-tls.crt
             
-          echo "--- 4. Deploying to $(aksName) via AKS Run Command ---"
+          echo "--- 4. Injecting Domain Name into Ingress ---"
+          sed -i "s/__DOMAIN_NAME__/$(domainName)/g" kube/frontend-service/ingress.yaml
+            
+          echo "--- 5. Deploying to $(aksName) via AKS Run Command ---"
           echo "Applying Deployment..."
           az aks command invoke \
             --resource-group $(aksResourceGroup) \

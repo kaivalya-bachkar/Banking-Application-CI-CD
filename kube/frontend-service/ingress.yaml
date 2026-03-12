@@ -10,10 +10,10 @@ spec:
   ingressClassName: azure-application-gateway
   tls:
   - hosts:
-    - www.globalbank.local
+    - __DOMAIN_NAME__ 
     secretName: globalbank-tls-secret
   rules:
-  - host: www.globalbank.local
+  - host: __DOMAIN_NAME__ 
     http:
       paths:
       - path: /
