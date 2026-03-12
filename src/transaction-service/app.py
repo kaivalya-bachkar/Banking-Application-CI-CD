@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from decimal import Decimal
 import os, requests
 
 app = Flask(__name__)
@@ -36,7 +37,11 @@ def process_transaction():
         if resp.status_code != 200: return jsonify({"error": "Invalid Account"}), 400
     except: return jsonify({"error": "Account Service Offline"}), 503
 
-    new_txn = Transaction(account_id=data['account_id'], amount=data['amount'], txn_type=data['txn_type'])
+    new_txn = Transaction(
+        account_id=data['account_id'], 
+        amount=Decimal(str(data['amount'])), 
+        txn_type=data['txn_type']
+    )
     db.session.add(new_txn)
     db.session.commit()
 
