@@ -56,18 +56,25 @@ def get_all_accounts():
 def update_balance(account_number):
     data = request.get_json()
     account = Account.query.get(account_number)
-    if not account: return jsonify({"error": "Account not found"}), 404
+    
+    if not account: 
+        print(f"ERROR: Account {account_number} not found!")
+        return jsonify({"error": "Account not found"}), 404
     
     amount = Decimal(str(data['amount']))
     txn_type = data.get('txn_type', '').lower()
     
-    # Robust checking to handle frontend quirks safely
-    if txn_type in ['credit', 'deposit']:
-        account.balance = account.balance + amount
-    elif txn_type in ['debit', 'withdraw', 'withdrawal']:
-        account.balance = account.balance - amount
+    print(f"Updating Account {account_number}: Current Balance = {account.balance}, Txn = {txn_type} {amount}")
     
+    if txn_type == 'credit':
+        account.balance = account.balance + amount
+    elif txn_type == 'debit':
+        account.balance = account.balance - amount
+    else:
+        return jsonify({"error": "Invalid txn_type. Must be 'credit' or 'debit'"}), 400
+        
     db.session.commit()
+    print(f"Success! New Balance: {account.balance}")
     return jsonify({"message": "Updated"}), 200
 
 if __name__ == '__main__':

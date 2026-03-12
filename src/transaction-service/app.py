@@ -32,13 +32,26 @@ with app.app_context():
 @app.route('/transactions', methods=['POST'])
 def process_transaction():
     data = request.get_json()
+    
+    # Force account_id to be an integer so the URL is built correctly!
+    acc_id = int(data['account_id'])
+    
     try:
-        resp = requests.put(f"{ACCOUNT_SERVICE_URL}/accounts/{data['account_id']}", json=data)
-        if resp.status_code != 200: return jsonify({"error": "Invalid Account"}), 400
-    except: return jsonify({"error": "Account Service Offline"}), 503
+        # Send the PUT request to the account service
+        resp = requests.put(f"{ACCOUNT_SERVICE_URL}/accounts/{acc_id}", json=data)
+        
+        # If the account service fails, ABORT the transaction!
+        if resp.status_code != 200: 
+            print(f"Failed to update account balance. Account Service returned: {resp.text}")
+            return jsonify({"error": "Failed to update account balance"}), 400
+            
+    except Exception as e: 
+        print(f"Account Service is unreachable: {str(e)}")
+        return jsonify({"error": "Account Service Offline"}), 503
 
+    # Only save the transaction to the DB if the balance update was successful
     new_txn = Transaction(
-        account_id=data['account_id'], 
+        account_id=acc_id, 
         amount=Decimal(str(data['amount'])), 
         txn_type=data['txn_type']
     )
@@ -46,7 +59,7 @@ def process_transaction():
     db.session.commit()
 
     try:
-        msg = f"Txn: {data['txn_type']} of ${data['amount']} on Acc #{data['account_id']}"
+        msg = f"Txn: {data['txn_type']} of ${data['amount']} on Acc #{acc_id}"
         requests.post(f"{NOTIFICATION_SERVICE_URL}/notifications/send", json={"message": msg})
     except: pass
 
