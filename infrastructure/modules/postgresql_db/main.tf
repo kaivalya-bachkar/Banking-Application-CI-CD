@@ -63,9 +63,30 @@ resource "azurerm_postgresql_flexible_server" "postgres_db" {
 
 }
 
-resource "azurerm_postgresql_flexible_server_database" "banking_db" {
-  name      = "banking_db"
-  server_id = azurerm_postgresql_flexible_server.postgres_db.id
+resource "azurerm_postgresql_flexible_server_database" "banking_db_dev" {
+  name      = "banking_db_dev"
+  server_id = azurerm_postgresql_flexible_server.YOUR_SERVER_RESOURCE_NAME.id
+  collation = "en_US.utf8"
+  charset   = "utf8"
+}
+
+resource "azurerm_postgresql_flexible_server_database" "banking_db_qa" {
+  name      = "banking_db_qa"
+  server_id = azurerm_postgresql_flexible_server.YOUR_SERVER_RESOURCE_NAME.id
+  collation = "en_US.utf8"
+  charset   = "utf8"
+}
+
+resource "azurerm_postgresql_flexible_server_database" "banking_db_uat" {
+  name      = "banking_db_uat"
+  server_id = azurerm_postgresql_flexible_server.YOUR_SERVER_RESOURCE_NAME.id
+  collation = "en_US.utf8"
+  charset   = "utf8"
+}
+
+resource "azurerm_postgresql_flexible_server_database" "banking_db_prod" {
+  name      = "banking_db_prod"
+  server_id = azurerm_postgresql_flexible_server.YOUR_SERVER_RESOURCE_NAME.id
   collation = "en_US.utf8"
   charset   = "utf8"
 }
