@@ -27,4 +27,4 @@ spec:
         - name: DB_PASSWORD
           value: "__DB_PASSWORD__" 
         - name: DB_NAME
-          value: banking_db
+          value: __DB_NAME__
