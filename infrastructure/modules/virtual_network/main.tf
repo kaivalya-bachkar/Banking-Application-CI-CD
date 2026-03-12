@@ -87,6 +87,18 @@ resource "azurerm_network_security_group" "public_nsg" {
   }
 
   security_rule {
+    name                       = "Allow-HTTPS-Inbound"
+    priority                   = 105
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
     name                       = "Allow-AppGW-Manager"
     priority                   = 110
     direction                  = "Inbound"
