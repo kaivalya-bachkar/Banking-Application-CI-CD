@@ -70,8 +70,10 @@ stages:
                 set -e 
                 cd infrastructure
                 
-                echo "--- EXECUTING APPROVED TERRAFORM ACTION ---"
+                echo "--- RE-INITIALIZING TERRAFORM (Required after fresh checkout) ---"
+                terraform init -backend-config="environments/dev/dev-backend.conf"
                 
+                echo "--- EXECUTING APPROVED TERRAFORM ACTION ---"
                 if [ "${{ parameters.action }}" == "apply" ]; then
                   terraform apply -var-file="environments/dev/dev.tfvars" -auto-approve
                   
