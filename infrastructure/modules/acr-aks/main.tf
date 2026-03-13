@@ -3,10 +3,6 @@
 #   location = "West Europe"
 # }
 
-data "http" "my_public_ip" {
-  url = "https://ifconfig.me/ip"
-}
-
 resource "azurerm_container_registry" "acr" {
   name                          = var.acr_name
   resource_group_name           = var.resource-group-name
@@ -16,12 +12,6 @@ resource "azurerm_container_registry" "acr" {
   public_network_access_enabled = false
   network_rule_set {
     default_action = "Deny"
-
-    ip_rule {
-      action = "Allow"
-      # Injects the IP fetched by the data block above
-      ip_range = "${data.http.my_public_ip.response_body}/32"
-    }
   }
 }
 
