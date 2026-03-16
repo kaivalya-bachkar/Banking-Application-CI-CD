@@ -4,43 +4,13 @@ resource "azurerm_resource_group" "rg" {
   location = "Central India"
 }
 
-# resource "azurerm_network_security_group" "example" {
-#   name                = "example-security-group"
-#   location            = azurerm_resource_group.rg.location
-#   resource_group_name = azurerm_resource_group.rg.name
-# }
-
 resource "azurerm_virtual_network" "vnet" {
   name                = var.vnet_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   address_space       = [var.vnet_cidr]
-
-  #   subnet {
-  #     name             = "subnet1"
-  #     address_prefixes = ["10.0.1.0/24"]
-  #   }
-
-  #   subnet {
-  #     name             = "subnet2"
-  #     address_prefixes = ["10.0.2.0/24"]
-  #     security_group   = azurerm_network_security_group.example.id
-  #   }
-
 }
 #subnets------------------------------------------------------------
-# resource "azurerm_resource_group" "example" {
-#   name     = "example-resources"
-#   location = "West Europe"
-# }
-
-# resource "azurerm_virtual_network" "example" {
-#   name                = "example-vnet"
-#   address_space       = ["10.0.0.0/16"]
-#   location            = azurerm_resource_group.example.location
-#   resource_group_name = azurerm_resource_group.example.name
-# }
-
 resource "azurerm_subnet" "public" {
   count                = length(var.public_subnet_cidrs)
   name                 = "public-subnet-${count.index + 1}"
