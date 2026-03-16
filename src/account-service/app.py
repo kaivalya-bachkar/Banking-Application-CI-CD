@@ -77,5 +77,17 @@ def update_balance(account_number):
     print(f"Success! New Balance: {account.balance}")
     return jsonify({"message": "Updated"}), 200
 
+@app.route("/health/live", methods=["GET"])
+def liveness_probe():
+    return jsonify({"status": "alive"}), 200
+
+@app.route("/health/ready", methods=["GET"])
+def readiness_probe():
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        return jsonify({"status": "ready", "database": "connected"}), 200
+    except Exception as e:
+        return jsonify({"status": "not ready", "error": str(e)}), 503
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5002)

@@ -4,6 +4,12 @@ metadata:
   name: frontend-service
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1       
+      maxUnavailable: 0 
+      
   selector:
     matchLabels:
       app: frontend-service
@@ -16,4 +22,34 @@ spec:
       - name: frontend-service
         image: __IMAGE__
         ports:
-        - containerPort: 5000
+        - containerPort: 5000 
+        env:
+        - name: USER_SERVICE_URL
+          value: "http://user-service"
+        - name: ACCOUNT_SERVICE_URL
+          value: "http://account-service"
+        - name: TRANSACTION_SERVICE_URL
+          value: "http://transaction-service"
+        - name: NOTIFICATION_SERVICE_URL
+          value: "http://notification-service"
+          
+        resources:
+          requests:
+            cpu: "500m"     
+            memory: "512Mi" 
+          limits:
+            cpu: "1000m"    
+            memory: "1Gi"   
+
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 15

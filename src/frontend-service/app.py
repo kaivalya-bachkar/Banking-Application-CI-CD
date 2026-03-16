@@ -44,5 +44,13 @@ def add_transaction():
     requests.post(f"{T_URL}/transactions", json={"account_id": int(request.form['account_id']), "amount": float(request.form['amount']), "txn_type": request.form['txn_type']})
     return redirect('/')
 
+@app.route("/health/live", methods=["GET"])
+def liveness_probe():
+    return jsonify({"status": "alive"}), 200
+
+@app.route("/health/ready", methods=["GET"])
+def readiness_probe():
+    return jsonify({"status": "ready"}), 200
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
