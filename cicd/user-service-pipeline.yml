@@ -100,8 +100,7 @@ stages:
         inlineScript: |
           set -e 
           
-          LOCAL_SERVICE_NAME="$(serviceName)"
-          PREFIX=${LOCAL_SERVICE_NAME%-service}
+          PREFIX=$(echo "$(serviceName)" | sed 's/-service//')
           
           echo "======================================================="
           echo " DEPLOYING: $(serviceName)"
