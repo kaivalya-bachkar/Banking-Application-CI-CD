@@ -36,6 +36,7 @@ variables:
     value: 'banking-app-aks-dev'
   - name: dbHost
     value: 'bankingdev-psqlflexibleserver.postgres.database.azure.com'
+    
   - name: serviceName
     value: ${{ parameters.serviceName }}
 
@@ -99,7 +100,8 @@ stages:
         inlineScript: |
           set -e 
           
-          PREFIX=${serviceName%-service} 
+          LOCAL_SERVICE_NAME="$(serviceName)"
+          PREFIX=${LOCAL_SERVICE_NAME%-service}
           
           echo "======================================================="
           echo " DEPLOYING: $(serviceName)"
