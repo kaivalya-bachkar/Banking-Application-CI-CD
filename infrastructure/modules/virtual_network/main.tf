@@ -135,11 +135,6 @@ resource "azurerm_subnet_network_security_group_association" "private" {
   subnet_id                 = azurerm_subnet.private[count.index].id
   network_security_group_id = azurerm_network_security_group.private_nsg.id
 }
-#nat gateway--------------------------------------------------------
-# resource "azurerm_resource_group" "example" {
-#   name     = "example-resources"
-#   location = "West Europe"
-# }
 
 resource "azurerm_public_ip" "nat_ip" {
   name                = var.public_nat_ip

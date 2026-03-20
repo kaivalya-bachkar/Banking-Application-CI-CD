@@ -1,0 +1,6 @@
+database:
+  host: "bankingdev-psqlflexibleserver.postgres.database.azure.com"
+  name: "banking_db_dev"
+
+ingress:
+  host: "www.globalbankdev.local"

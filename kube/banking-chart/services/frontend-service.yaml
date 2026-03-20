@@ -1,0 +1,11 @@
+app:
+  name: frontend-service
+
+image:
+  repository: bankingappregistrydev.azurecr.io/dev/frontend-service
+
+service:
+  port: 5000
+
+ingress:
+  enabled: true

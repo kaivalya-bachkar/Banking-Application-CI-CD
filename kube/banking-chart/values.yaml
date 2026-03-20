@@ -1,0 +1,21 @@
+replicaCount: 1
+
+app:
+  name: "default-service"
+
+image:
+  repository: ""
+  tag: "latest" 
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8080 
+
+database:
+  host: ""
+  name: ""
+
+ingress:
+  enabled: false
+  host: ""

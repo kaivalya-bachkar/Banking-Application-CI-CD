@@ -1,0 +1,6 @@
+apiVersion: v2
+name: banking-microservice
+description: A universal Helm chart for deploying Global Bank microservices.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
