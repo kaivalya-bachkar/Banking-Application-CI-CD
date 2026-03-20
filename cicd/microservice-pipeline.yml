@@ -1,0 +1,177 @@
+trigger: none
+
+pool:
+  name: 'Default'
+
+parameters:
+  - name: serviceName
+    displayName: 'Select Microservice to Deploy'
+    type: string
+    default: 'user-service'
+    values:
+      - user-service
+      - account-service
+      - transaction-service
+      - notification-service
+      - frontend-service
+
+  - name: environment
+    displayName: 'Target Environment'
+    type: string
+    default: 'dev'
+    values:
+      - dev
+      - qa
+      - uat
+      - prod
+
+variables:
+  - name: azureServiceConnection
+    value: 'Banking-App-Service-Connection' 
+  - name: acrName
+    value: 'bankingappregistrydev' 
+  - name: aksResourceGroup
+    value: 'Banking_Application_Dev'
+  - name: aksName
+    value: 'banking-app-aks-dev'
+    
+  - name: serviceName
+    value: ${{ parameters.serviceName }}
+
+  - ${{ if eq(parameters.environment, 'dev') }}:
+    - name: namespace
+      value: 'dev'
+    - name: sourceNamespace
+      value: '' # Dev builds fresh, so no source namespace
+    - name: domainName
+      value: 'www.globalbankdev.local'
+
+  - ${{ if eq(parameters.environment, 'qa') }}:
+    - name: namespace
+      value: 'qa'
+    - name: sourceNamespace
+      value: 'dev'
+    - name: domainName
+      value: 'www.globalbankqa.local'
+
+  - ${{ if eq(parameters.environment, 'uat') }}:
+    - name: namespace
+      value: 'uat'
+    - name: sourceNamespace
+      value: 'qa'
+    - name: domainName
+      value: 'www.globalbankuat.local'
+
+  - ${{ if eq(parameters.environment, 'prod') }}:
+    - name: namespace
+      value: 'prod'
+    - name: sourceNamespace
+      value: 'uat'
+    - name: domainName
+      value: 'www.globalbankprod.local'
+
+stages:
+- stage: BuildAndDeploy
+  displayName: 'Deploy ${{ parameters.serviceName }} to ${{ parameters.environment }}'
+  jobs:
+  - job: BuildPushDeploy
+    steps:
+    - bash: |
+        SHORT_HASH=${BUILD_SOURCEVERSION:0:8}
+        echo "Git Commit: $BUILD_SOURCEVERSION"
+        echo "Short Hash: $SHORT_HASH"
+        echo "##vso[task.setvariable variable=tag]$SHORT_HASH"
+      displayName: 'Set Image Tag to Short Commit Hash'
+      
+    - task: AzureCLI@2
+      displayName: 'Build/Promote, Push, and Deploy via Helm'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -e 
+          
+          echo "======================================================="
+          echo " DEPLOYING VIA HELM: $(serviceName)"
+          echo " TARGET NAMESPACE: $(namespace)"
+          echo " TARGET DOMAIN: $(domainName)"
+          echo " SHARED ACR: $(acrName)"
+          echo "======================================================="
+          
+          echo "--- 1. Handling Image for $(namespace) ---"
+          cd src/$(serviceName)
+          az acr login --name $(acrName)
+          
+          if [ "${{ parameters.environment }}" == "dev" ]; then
+            echo "Environment is DEV. Building a fresh image from source code..."
+            docker build -t $(acrName).azurecr.io/$(namespace)/$(serviceName):$(tag) .
+            docker push $(acrName).azurecr.io/$(namespace)/$(serviceName):$(tag)
+          else
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image from $(sourceNamespace)..."
+            docker pull $(acrName).azurecr.io/$(sourceNamespace)/$(serviceName):$(tag)
+            
+            echo "Retagging and pushing image to $(namespace) folder..."
+            docker tag $(acrName).azurecr.io/$(sourceNamespace)/$(serviceName):$(tag) $(acrName).azurecr.io/$(namespace)/$(serviceName):$(tag)
+            docker push $(acrName).azurecr.io/$(namespace)/$(serviceName):$(tag)
+          fi
+          
+          echo "--- 2. Packaging Universal Helm Chart ---"
+          cd ../../ 
+          # This compiles your templates into a single zipped file
+          helm package ./kube/banking-chart
+          CHART_PKG=$(ls banking-microservice-*.tgz)
+          
+          # FRONTEND ONLY: Generate TLS
+          if [ "$(serviceName)" == "frontend-service" ]; then
+            echo "--- 3. Automating TLS Certificate Generation ---"
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -out globalbank-tls.crt \
+              -keyout globalbank-tls.key \
+              -subj "/CN=$(domainName)/O=Global Bank"
+              
+            echo "Injecting TLS Secret into AKS Namespace: $(namespace)..."
+            az aks command invoke \
+              --resource-group $(aksResourceGroup) \
+              --name $(aksName) \
+              --command "kubectl create namespace $(namespace) --dry-run=client -o yaml | kubectl apply -f - && kubectl create secret tls globalbank-tls-secret --key globalbank-tls.key --cert globalbank-tls.crt -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
+              --file globalbank-tls.key \
+              --file globalbank-tls.crt
+          fi
+
+          echo "--- 3.5. Injecting Shared Database Secret ---"
+          # Ensures namespace exists, then securely injects the ADO secret variable
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl create namespace $(namespace) --dry-run=client -o yaml | kubectl apply -f - && kubectl create secret generic db-credentials --from-literal=password=$(dbPassword) -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -"
+          
+          echo "--- 4. Deploying to Private AKS via Helm ---"
+          # Pushes the zipped chart and our 3 override files through the secure tunnel
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "helm upgrade --install $(serviceName) ${CHART_PKG} --namespace $(namespace) --create-namespace -f values.yaml -f ${{ parameters.environment }}.yaml -f $(serviceName).yaml --set image.tag=$(tag) --wait" \
+            --file ${CHART_PKG} \
+            --file kube/banking-chart/values.yaml \
+            --file kube/banking-chart/environments/${{ parameters.environment }}.yaml \
+            --file kube/banking-chart/services/$(serviceName).yaml
+            
+          # FRONTEND ONLY: Reboot AGIC
+          if [ "$(serviceName)" == "frontend-service" ]; then
+            echo "Frontend Selected: Resetting AGIC Pod to fetch fresh routing rules..."
+            az aks command invoke \
+              --resource-group $(aksResourceGroup) \
+              --name $(aksName) \
+              --command "kubectl delete pod -n kube-system -l app=ingress-appgw"
+          fi
+
+    - task: CmdLine@2
+      displayName: 'Cleanup Local Disk Space'
+      condition: always()
+      inputs:
+        script: |
+          docker rmi $(acrName).azurecr.io/$(namespace)/$(serviceName):$(tag) || true
+          if [ "$(sourceNamespace)" != "" ]; then
+            docker rmi $(acrName).azurecr.io/$(sourceNamespace)/$(serviceName):$(tag) || true
+          fi
