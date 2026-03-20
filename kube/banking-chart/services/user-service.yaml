@@ -1,8 +1,5 @@
 app:
   name: user-service
 
-image:
-  repository: bankingappregistrydev.azurecr.io/dev/user-service
-
 service:
   port: 5001

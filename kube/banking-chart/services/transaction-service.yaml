@@ -1,6 +1,5 @@
 app:
   name: transaction-service
-image:
-  repository: bankingappregistrydev.azurecr.io/dev/transaction-service
+
 service:
   port: 5003

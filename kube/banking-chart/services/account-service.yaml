@@ -1,6 +1,5 @@
 app:
   name: account-service
-image:
-  repository: bankingappregistrydev.azurecr.io/dev/account-service
+
 service:
   port: 5002
