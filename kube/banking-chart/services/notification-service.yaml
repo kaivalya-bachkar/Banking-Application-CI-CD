@@ -1,0 +1,6 @@
+app:
+  name: notification-service
+image:
+  repository: bankingappregistrydev.azurecr.io/dev/notification-service
+service:
+  port: 5004
