@@ -4,7 +4,7 @@ app:
   name: "default-service"
 
 image:
-  repository: "bankingappregistrydev.azurecr.io"
+  registry: "bankingappregistrydev.azurecr.io"
   tag: "latest" 
   pullPolicy: Always
 
