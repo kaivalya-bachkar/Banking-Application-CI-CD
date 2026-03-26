@@ -80,3 +80,41 @@ stages:
                 elif [ "${{ parameters.action }}" == "destroy" ]; then
                   terraform destroy -var-file="environments/dev/dev.tfvars" -auto-approve
                 fi
+
+- stage: BootstrapArgoCD
+  displayName: 'Stage 3: Bootstrap ArgoCD'
+  dependsOn: TerraformExecute
+  condition: and(succeeded(), eq('${{ parameters.action }}', 'apply'))
+  jobs:
+  - job: InstallArgo
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Install ArgoCD & Apply Ingress'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -e
+          AKS_RG="Banking_Application_Dev"
+          AKS_NAME="banking-app-aks-dev"
+
+          echo "--- 1. Installing Core ArgoCD ---"
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+          
+          echo "--- 2. Applying Ingress from Git ---"
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl apply -f ingress.yaml" \
+            --file kube/argocd/ingress.yaml
+            
+          echo "--- 3. Extracting Password ---"
+          sleep 60 # Wait for Argo to generate the secret
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo"
