@@ -28,7 +28,7 @@ spec:
     spec:
       project: default
       source:
-        repoURL: 'https://github.com/your-org/Global-Bank-Repo.git'
+        repoURL: 'https://github.com/kaivalya-bachkar/Banking-Application-CI-CD.git'
         targetRevision: HEAD
         path: kube/banking-chart
         helm:
@@ -36,6 +36,7 @@ spec:
             - values.yaml
             - environments/{{env}}.yaml
             - services/{{service}}.yaml
+            - tags/{{env}}-{{service}}.yaml
       destination:
         server: 'https://kubernetes.default.svc'
         namespace: '{{env}}' 
