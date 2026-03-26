@@ -89,7 +89,7 @@ stages:
   - job: InstallArgo
     steps:
     - task: AzureCLI@2
-      displayName: 'Install ArgoCD & Apply Ingress'
+      displayName: 'Install ArgoCD, TLS, & Apply Ingress'
       inputs:
         azureSubscription: $(azureServiceConnection)
         scriptType: 'bash'
@@ -98,23 +98,60 @@ stages:
           set -e
           AKS_RG="Banking_Application_Dev"
           AKS_NAME="banking-app-aks-dev"
+          DOMAIN="www.bankargocd.local"
 
           echo "--- 1. Installing Core ArgoCD ---"
           az aks command invoke \
             --resource-group $AKS_RG \
             --name $AKS_NAME \
             --command "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
-          
-          echo "--- 2. Applying Ingress from Git ---"
+
+          echo "--- 2. Patching ArgoCD for SSL Offloading (HTTP mode) ---"
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl patch configmap argocd-cmd-params-cm -n argocd -p '{\"data\": {\"server.insecure\": \"true\"}}'"
+
+          echo "--- 3. Generating and Injecting TLS Certificate ---"
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -out argocd-tls.crt \
+            -keyout argocd-tls.key \
+            -subj "/CN=$DOMAIN/O=Global Bank"
+
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl create secret tls globalbank-tls-secret --key argocd-tls.key --cert argocd-tls.crt -n argocd --dry-run=client -o yaml | kubectl apply -f -" \
+            --file argocd-tls.key \
+            --file argocd-tls.crt
+
+          echo "--- 4. Applying Ingress from Git ---"
           az aks command invoke \
             --resource-group $AKS_RG \
             --name $AKS_NAME \
             --command "kubectl apply -f ingress.yaml" \
             --file kube/argocd/ingress.yaml
-            
-          echo "--- 3. Extracting Password ---"
-          sleep 60 # Wait for Argo to generate the secret
+
+          echo "--- 5. Rebooting Pods to Apply Changes ---"
           az aks command invoke \
             --resource-group $AKS_RG \
             --name $AKS_NAME \
-            --command "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo"
+            --command "kubectl rollout restart deployment argocd-server -n argocd"
+            
+          # Using || true so the pipeline doesn't crash if the AGIC pod happens to not exist yet
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl delete pod -n kube-system -l app=ingress-appgw || true"
+
+          echo "--- 6. Extracting Password ---"
+          echo "Waiting 60 seconds for Argo to generate the secret..."
+          sleep 60 
+          
+          # Temporarily disable 'exit on error' so a missing password secret doesn't fail the whole pipeline
+          set +e
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo" || echo "Secret not found. (If this is a re-run, you may have already changed the default password in the UI)."
+          set -e

@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: global-bank-services
+  namespace: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - env: dev
+                - env: qa
+                - env: uat
+                - env: prod
+          - list:
+              elements:
+                - service: frontend-service
+                - service: user-service
+                - service: account-service
+                - service: transaction-service
+                - service: notification-service
+
+  template:
+    metadata:
+      name: '{{env}}-{{service}}' 
+      namespace: argocd
+    spec:
+      project: default
+      source:
+        repoURL: 'https://github.com/your-org/Global-Bank-Repo.git'
+        targetRevision: HEAD
+        path: kube/banking-chart
+        helm:
+          valueFiles:
+            - values.yaml
+            - environments/{{env}}.yaml
+            - services/{{service}}.yaml
+      destination:
+        server: 'https://kubernetes.default.svc'
+        namespace: '{{env}}' 
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true 
