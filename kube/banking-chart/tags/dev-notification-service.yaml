@@ -1,0 +1,3 @@
+image:
+  repository: "bankingappregistrydev.azurecr.io/dev/notification-service"
+  tag: "0da9890e"
