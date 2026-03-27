@@ -44,25 +44,33 @@ variables:
     - name: namespace
       value: 'dev'
     - name: sourceNamespace
-      value: '' # Dev builds fresh, so no source namespace
+      value: '' 
+    - name: domainName
+      value: 'www.globalbankdev.local'
 
   - ${{ if eq(parameters.environment, 'qa') }}:
     - name: namespace
       value: 'qa'
     - name: sourceNamespace
       value: 'dev'
+    - name: domainName
+      value: 'www.globalbankqa.local'
 
   - ${{ if eq(parameters.environment, 'uat') }}:
     - name: namespace
       value: 'uat'
     - name: sourceNamespace
       value: 'qa'
+    - name: domainName
+      value: 'www.globalbankuat.local'
 
   - ${{ if eq(parameters.environment, 'prod') }}:
     - name: namespace
       value: 'prod'
     - name: sourceNamespace
       value: 'uat'
+    - name: domainName
+      value: 'www.globalbankprod.local'
 
 stages:
 - stage: BuildAndPromote
@@ -113,27 +121,46 @@ stages:
           fi
 
     - task: AzureCLI@2
-      displayName: 'Inject Database Secret to AKS'
+      displayName: 'Inject Secrets & TLS to AKS'
       inputs:
         azureSubscription: $(azureServiceConnection)
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set -e
-          echo "--- Injecting Shared Database Secret for $(namespace) ---"
           
-          # 1. Safely write the secret to a local file
+          # --- 1. INJECT DATABASE SECRET (Runs for all microservices) ---
+          echo "--- Injecting Shared Database Secret for $(namespace) ---"
           echo -n "$(dbPassword)" > db_password.txt
           
-          # 2. Push the file through the tunnel and create/update the secret
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
             --command "kubectl create namespace $(namespace) --dry-run=client -o yaml | kubectl apply -f - && kubectl create secret generic db-credentials --from-file=password=db_password.txt -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
             --file db_password.txt
             
-          # 3. Securely delete the temporary file from the local agent
           rm db_password.txt
+          
+          # --- 2. GENERATE & INJECT TLS (Runs ONLY for frontend) ---
+          if [ "${{ parameters.serviceName }}" == "frontend-service" ]; then
+            echo "--- Automating TLS Certificate Generation for $(domainName) ---"
+            
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -out globalbank-tls.crt \
+              -keyout globalbank-tls.key \
+              -subj "/CN=$(domainName)/O=Global Bank"
+              
+            echo "Injecting TLS Secret into AKS Namespace: $(namespace)..."
+            az aks command invoke \
+              --resource-group $(aksResourceGroup) \
+              --name $(aksName) \
+              --command "kubectl create secret tls globalbank-tls-secret --key globalbank-tls.key --cert globalbank-tls.crt -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
+              --file globalbank-tls.key \
+              --file globalbank-tls.crt
+              
+            # Cleanup the local agent
+            rm globalbank-tls.key globalbank-tls.crt
+          fi
 
     - task: CmdLine@2
       displayName: 'Cleanup Local Disk Space'
