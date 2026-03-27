@@ -1,0 +1,3 @@
+image:
+  repository: "bankingappregistrydev.azurecr.io/dev/frontend-service"
+  tag: "57b89aba"
