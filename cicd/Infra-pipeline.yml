@@ -104,8 +104,8 @@ stages:
           az aks command invoke \
             --resource-group $AKS_RG \
             --name $AKS_NAME \
-            --command "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
-
+            --command "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --server-side=true --force-conflicts"
+          
           echo "--- 2. Patching ArgoCD for SSL Offloading (HTTP mode) ---"
           az aks command invoke \
             --resource-group $AKS_RG \

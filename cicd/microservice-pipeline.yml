@@ -108,6 +108,19 @@ stages:
             docker push $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
           fi
 
+    # ---> DISK CLEANUP STEP ADDED HERE <---
+    - task: CmdLine@2
+      displayName: 'Cleanup Local Disk Space'
+      condition: always() # Guarantees the agent is cleaned even if the build fails!
+      inputs:
+        script: |
+          echo "--- Cleaning up local Docker images ---"
+          docker rmi $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag) || true
+          
+          if [ "$(sourceNamespace)" != "" ]; then
+            docker rmi $(acrName).azurecr.io/$(sourceNamespace)/${{ parameters.serviceName }}:$(imageTag) || true
+          fi
+
 - stage: UpdateGitOps
   displayName: 'Update ArgoCD Git Manifests'
   dependsOn: BuildAndPromote
