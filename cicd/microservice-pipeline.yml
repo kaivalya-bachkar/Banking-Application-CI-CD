@@ -128,19 +128,22 @@ stages:
         scriptLocation: 'inlineScript'
         inlineScript: |
           set -e
-          
-          # --- 1. INJECT DATABASE SECRET (Runs for all microservices) ---
+
+          # --- 1. INJECT DATABASE SECRET ---
           echo "--- Injecting Shared Database Secret for $(namespace) ---"
+
+          # We use a temporary file to ensure special characters in passwords don't break the shell
           echo -n "$(dbPassword)" > db_password.txt
-          
+
           az aks command invoke \
             --resource-group $(aksResourceGroup) \
             --name $(aksName) \
-            --command "kubectl create secret generic central-db-secret --from-literal=DB_PASSWORD=$(DB_PASSWORD) -n dev --dry-run=client -o yaml | kubectl apply -f -"            --file db_password.txt
-            
+            --command "kubectl create secret generic central-db-secret --from-literal=DB_PASSWORD=\$(cat db_password.txt) -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
+            --file db_password.txt
+
           rm db_password.txt
-          
-          # --- 2. GENERATE & INJECT TLS (Runs ONLY for frontend) ---
+
+          # --- 2. GENERATE & INJECT TLS (Frontend only) ---
           if [ "${{ parameters.serviceName }}" == "frontend-service" ]; then
             echo "--- Automating TLS Certificate Generation for $(domainName) ---"
             
@@ -149,14 +152,17 @@ stages:
               -keyout globalbank-tls.key \
               -subj "/CN=$(domainName)/O=Global Bank"
               
-            echo "Injecting TLS Secret into AKS Namespace: $(namespace)..."
+            echo "Injecting TLS Secret into AKS..."
+            
+            # IMPORTANT: In 'az aks command invoke', --file uploads files to the current directory.
+            # So we refer to them simply by their filenames, NOT 'path/to/cert'.
             az aks command invoke \
               --resource-group $(aksResourceGroup) \
               --name $(aksName) \
-              --command "kubectl create secret tls banking-tls-secret --cert=path/to/cert --key=path/to/key -n dev --dry-run=client -o yaml | kubectl apply -f -"              --file globalbank-tls.key \
+              --command "kubectl create secret tls banking-tls-secret --cert=globalbank-tls.crt --key=globalbank-tls.key -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
+              --file globalbank-tls.key \
               --file globalbank-tls.crt
               
-            # Cleanup the local agent
             rm globalbank-tls.key globalbank-tls.crt
           fi
 
