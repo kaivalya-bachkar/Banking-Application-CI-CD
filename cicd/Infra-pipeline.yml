@@ -82,7 +82,7 @@ stages:
                 fi
 
 - stage: BootstrapArgoCD
-  displayName: 'Stage 3: Bootstrap ArgoCD'
+  displayName: 'Stage 3: ArgoCD'
   dependsOn: TerraformExecute
   condition: and(succeeded(), eq('${{ parameters.action }}', 'apply'))
   jobs:
@@ -138,7 +138,6 @@ stages:
             --name $AKS_NAME \
             --command "kubectl rollout restart deployment argocd-server -n argocd"
             
-          # Using || true so the pipeline doesn't crash if the AGIC pod happens to not exist yet
           az aks command invoke \
             --resource-group $AKS_RG \
             --name $AKS_NAME \
@@ -148,10 +147,19 @@ stages:
           echo "Waiting 60 seconds for Argo to generate the secret..."
           sleep 60 
           
-          # Temporarily disable 'exit on error' so a missing password secret doesn't fail the whole pipeline
           set +e
           az aks command invoke \
             --resource-group $AKS_RG \
             --name $AKS_NAME \
             --command "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo" || echo "Secret not found. (If this is a re-run, you may have already changed the default password in the UI)."
           set -e
+
+          echo "--- 7. Applying the GitOps ApplicationSet ---"
+          az aks command invoke \
+            --resource-group $AKS_RG \
+            --name $AKS_NAME \
+            --command "kubectl apply -f applicationset.yaml" \
+            --file kube/argocd/applicationset.yaml
+            
+          echo "🚀 CLUSTER BOOTSTRAP COMPLETE!"
+          echo "ArgoCD is now watching your repository for microservice tags."

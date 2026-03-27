@@ -4,11 +4,14 @@ trigger:
       - main
   paths:
     include:
-      - src/* 
+      - src/*
+
+pool:
+  name: 'Default' 
 
 parameters:
   - name: serviceName
-    displayName: 'Microservice to Build'
+    displayName: 'Select Microservice to Deploy'
     type: string
     default: 'user-service'
     values:
@@ -28,47 +31,103 @@ parameters:
       - prod
 
 variables:
-  acrRegistry: 'bankingappregistrydev.azurecr.io' 
-  imageTag: '$(Build.BuildId)'
+  - name: azureServiceConnection
+    value: 'Banking-App-Service-Connection' 
+  - name: acrName
+    value: 'bankingappregistrydev' 
+    
+  - ${{ if eq(parameters.environment, 'dev') }}:
+    - name: namespace
+      value: 'dev'
+    - name: sourceNamespace
+      value: '' # Dev builds fresh, so no source namespace
+
+  - ${{ if eq(parameters.environment, 'qa') }}:
+    - name: namespace
+      value: 'qa'
+    - name: sourceNamespace
+      value: 'dev'
+
+  - ${{ if eq(parameters.environment, 'uat') }}:
+    - name: namespace
+      value: 'uat'
+    - name: sourceNamespace
+      value: 'qa'
+
+  - ${{ if eq(parameters.environment, 'prod') }}:
+    - name: namespace
+      value: 'prod'
+    - name: sourceNamespace
+      value: 'uat'
 
 stages:
-- stage: BuildAndPush
-  displayName: 'Build and Push to ACR'
+- stage: BuildAndPromote
+  displayName: 'Handle Docker Image for ${{ parameters.environment }}'
   jobs:
-  - job: DockerBuild
-    pool:
-      vmImage: 'ubuntu-latest'
+  - job: DockerLogic
     steps:
-    - task: Docker@2
-      displayName: 'Build & Push Docker Image'
+    - checkout: self
+    
+    - bash: |
+        SHORT_HASH=${BUILD_SOURCEVERSION:0:8}
+        echo "Git Commit: $BUILD_SOURCEVERSION"
+        echo "Short Hash: $SHORT_HASH"
+        # Exporting this as a variable so the next task can use it
+        echo "##vso[task.setvariable variable=imageTag]$SHORT_HASH"
+      displayName: 'Set Image Tag to Short Commit Hash'
+      
+    - task: AzureCLI@2
+      displayName: 'Build/Promote and Push via Azure CLI'
       inputs:
-        containerRegistry: '$(azureServiceConnection)' 
-        repository: '$(parameters.serviceName)'
-        command: 'buildAndPush'
-        Dockerfile: 'src/$(parameters.serviceName)/Dockerfile'
-        tags: |
-          $(imageTag)
-          latest
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -e 
+          
+          echo "======================================================="
+          echo " HANDLING IMAGE FOR: ${{ parameters.serviceName }}"
+          echo " TARGET NAMESPACE: $(namespace)"
+          echo " SHARED ACR: $(acrName)"
+          echo " IMAGE TAG: $(imageTag)"
+          echo "======================================================="
+          
+          az acr login --name $(acrName)
+          
+          if [ "${{ parameters.environment }}" == "dev" ]; then
+            echo "Environment is DEV. Building a fresh image from source code..."
+            cd src/${{ parameters.serviceName }}
+            docker build -t $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag) .
+            docker push $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
+          else
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image from $(sourceNamespace)..."
+            docker pull $(acrName).azurecr.io/$(sourceNamespace)/${{ parameters.serviceName }}:$(imageTag)
+            
+            echo "Retagging and pushing image to $(namespace) repository..."
+            docker tag $(acrName).azurecr.io/$(sourceNamespace)/${{ parameters.serviceName }}:$(imageTag) $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
+            docker push $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
+          fi
 
 - stage: UpdateGitOps
-  displayName: 'Update GitOps Manifests'
-  dependsOn: BuildAndPush
+  displayName: 'Update ArgoCD Git Manifests'
+  dependsOn: BuildAndPromote
   condition: succeeded()
   jobs:
   - job: CommitToGitHub
-    pool:
-      vmImage: 'ubuntu-latest'
     steps:
     - checkout: self
       persistCredentials: true
 
     - script: |
+        set -e
+        IMAGE_TAG=${BUILD_SOURCEVERSION:0:8}
+        
         echo "--- 1. Updating the Tag File ---"
         TAG_FILE="kube/banking-chart/tags/${{ parameters.environment }}-${{ parameters.serviceName }}.yaml"
         
-        # Overwrite the dummy file with the real Docker image tag we just built
         echo "image:" > $TAG_FILE
-        echo "  tag: \"$(imageTag)\"" >> $TAG_FILE
+        echo "  repository: \"$(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}\"" >> $TAG_FILE
+        echo "  tag: \"$IMAGE_TAG\"" >> $TAG_FILE
         
         echo "--- 2. Configuring Git ---"
         git config --global user.email "kaivalya.bachkar@gmail.com"
@@ -76,11 +135,10 @@ stages:
         
         echo "--- 3. Committing to GitHub ---"
         git add $TAG_FILE
-        git commit -m "deploy: update ${{ parameters.serviceName }} to $(imageTag) in ${{ parameters.environment }} [skip ci]"
+        git commit -m "deploy: promote ${{ parameters.serviceName }} to $IMAGE_TAG in ${{ parameters.environment }} [skip ci]"
         
         echo "--- 4. Pushing to GitHub ---"
-        # We use a GitHub PAT passed in as a secret variable to authenticate the push
         git push https://$(GITHUB_PAT)@github.com/kaivalya-bachkar/Banking-Application-CI-CD.git HEAD:main
-      displayName: 'Commit New Tag to GitHub'
+      displayName: 'Commit Config to GitOps Repo'
       env:
-        GITHUB_PAT: $(GITHUB_PAT) 
+        GITHUB_PAT: $(GITHUB_PAT)
