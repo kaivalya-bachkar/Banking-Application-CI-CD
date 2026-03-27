@@ -191,11 +191,11 @@ stages:
         echo "--- 1. Updating the Tag File ---"
         TAG_FILE="kube/banking-chart/tags/${{ parameters.environment }}-${{ parameters.serviceName }}.yaml"
         
-        # ---> THE FIX: Create the directory if it doesn't exist <---
+        # Ensure the directory exists
         mkdir -p kube/banking-chart/tags
         
+        # We ONLY need to update the tag! The Helm template handles the rest dynamically.
         echo "image:" > $TAG_FILE
-        echo "  repository: \"$(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}\"" >> $TAG_FILE
         echo "  tag: \"$IMAGE_TAG\"" >> $TAG_FILE
         
         echo "--- 2. Configuring Git ---"
@@ -206,7 +206,11 @@ stages:
         git add $TAG_FILE
         git commit -m "deploy: promote ${{ parameters.serviceName }} to $IMAGE_TAG in ${{ parameters.environment }} [skip ci]"
         
-        echo "--- 4. Pushing to GitHub ---"
+        echo "--- 4. Pulling latest changes from GitHub (Rebase) ---"
+        # This prevents the "non-fast-forward" rejection error!
+        git pull --rebase https://$(GITHUB_PAT)@github.com/kaivalya-bachkar/Banking-Application-CI-CD.git main
+        
+        echo "--- 5. Pushing to GitHub ---"
         git push https://$(GITHUB_PAT)@github.com/kaivalya-bachkar/Banking-Application-CI-CD.git HEAD:main
       displayName: 'Commit Config to GitOps Repo'
       env:
