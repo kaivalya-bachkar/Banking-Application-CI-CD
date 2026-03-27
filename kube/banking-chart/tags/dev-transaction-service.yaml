@@ -1,3 +1,2 @@
 image:
-  repository: "bankingappregistrydev.azurecr.io/dev/transaction-service"
-  tag: "5a8cba31"
+  tag: "d916dd52"
