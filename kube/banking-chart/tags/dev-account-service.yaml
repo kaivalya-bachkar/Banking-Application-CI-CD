@@ -1,3 +1,2 @@
 image:
-  repository: "bankingappregistrydev.azurecr.io/dev/account-service"
-  tag: "57a133af"
+  tag: "8b40d7b3"
