@@ -138,6 +138,9 @@ stages:
         echo "--- 1. Updating the Tag File ---"
         TAG_FILE="kube/banking-chart/tags/${{ parameters.environment }}-${{ parameters.serviceName }}.yaml"
         
+        # ---> THE FIX: Create the directory if it doesn't exist <---
+        mkdir -p kube/banking-chart/tags
+        
         echo "image:" > $TAG_FILE
         echo "  repository: \"$(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}\"" >> $TAG_FILE
         echo "  tag: \"$IMAGE_TAG\"" >> $TAG_FILE
