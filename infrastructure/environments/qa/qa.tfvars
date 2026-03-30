@@ -42,7 +42,9 @@ mod_dns_name = "bankingappaksqa"
 
 mod_node_pool_name = "systempool"
 
-mod_aks_node_count = 1
+mod_aks_min_count = 1
+
+mod_aks_min_count = 2
 
 mod_aks_vm_size = "Standard_D2s_v3"
 

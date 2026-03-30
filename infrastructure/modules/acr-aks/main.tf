@@ -50,10 +50,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
   private_cluster_enabled = true
 
   default_node_pool {
-    name           = var.node_pool_name
-    node_count     = var.aks_node_count
-    vm_size        = var.aks_vm_size
-    vnet_subnet_id = var.private_subnet_one_id
+    name                 = var.node_pool_name
+    auto_scaling_enabled = true
+    min_count            = var.aks_min_count
+    max_count            = var.aks_max_count
+    vm_size              = var.aks_vm_size
+    vnet_subnet_id       = var.private_subnet_one_id
   }
 
   identity {
@@ -74,6 +76,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   ingress_application_gateway {
     subnet_id = var.public_subnet_one_id
+  }
+
+  lifecycle {
+    ignore_changes = [
+      default_node_pool[0].node_count
+    ]
   }
 }
 

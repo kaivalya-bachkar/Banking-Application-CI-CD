@@ -26,7 +26,8 @@ module "acr-aks" {
   aks_name              = var.mod_aks_name
   dns_name              = var.mod_dns_name
   node_pool_name        = var.mod_node_pool_name
-  aks_node_count        = var.mod_aks_node_count
+  aks_min_count         = var.mod_aks_min_count
+  aks_max_count         = var.mod_aks_max_count
   aks_vm_size           = var.mod_aks_vm_size
   private_subnet_one_id = module.Network.private_subnet_one_id
   public_subnet_one_id  = module.Network.public_subnet_one_id

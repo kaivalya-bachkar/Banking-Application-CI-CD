@@ -69,7 +69,11 @@ variable "mod_node_pool_name" {
   type = string
 }
 
-variable "mod_aks_node_count" {
+variable "mod_aks_min_count" {
+  type = string
+}
+
+variable "mod_aks_max_count" {
   type = string
 }
 

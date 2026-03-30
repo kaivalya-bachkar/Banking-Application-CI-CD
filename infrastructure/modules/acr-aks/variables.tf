@@ -47,7 +47,11 @@ variable "node_pool_name" {
   type = string
 }
 
-variable "aks_node_count" {
+variable "aks_min_count" {
+  type = string
+}
+
+variable "aks_max_count" {
   type = string
 }
 
