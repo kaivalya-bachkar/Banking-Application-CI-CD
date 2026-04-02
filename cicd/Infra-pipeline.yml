@@ -34,10 +34,6 @@ stages:
         inlineScript: |
           set -e 
           cd infrastructure
-
-          echo "--- CLEANING UP STALE TERRAFORM CACHE ---"
-          rm -rf .terraform
-          rm -f .terraform.lock.hcl
           
           echo " REQUESTED ACTION: ${{ parameters.action }}"
           

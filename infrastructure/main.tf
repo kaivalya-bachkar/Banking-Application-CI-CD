@@ -12,7 +12,7 @@ module "Network" {
 }
 
 module "acr-aca" {
-  source                  = "./modules/acr-aks"
+  source                  = "./modules/acr-aca"
   acr_name                = var.mod_acr_name
   resource-group-name     = module.Network.resource-group-name
   resource-group-location = module.Network.resource-group-location
