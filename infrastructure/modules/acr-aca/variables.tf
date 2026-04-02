@@ -34,39 +34,11 @@ variable "acr_dzg_name" {
   type = string
 }
 
-#aks-------------------------
-variable "aks_name" {
-  type = string
-}
-
-variable "dns_name" {
-  type = string
-}
-
-variable "node_pool_name" {
-  type = string
-}
-
-variable "aks_min_count" {
-  type = string
-}
-
-variable "aks_max_count" {
-  type = string
-}
-
-variable "aks_vm_size" {
-  type = string
-}
-
+# acas-------------------------
 variable "private_subnet_one_id" {
   type = string
 }
 
-variable "public_subnet_one_id" {
-  type = string
-}
-
-variable "comman_tag" {
-  type = string
+variable "aca_environments" {
+  type = set(string)
 }

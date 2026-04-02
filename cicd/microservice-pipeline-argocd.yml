@@ -1,0 +1,221 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - src/*
+
+pool:
+  name: 'Default' 
+
+parameters:
+  - name: serviceName
+    displayName: 'Select Microservice to Deploy'
+    type: string
+    default: 'user-service'
+    values:
+      - frontend-service
+      - user-service
+      - account-service
+      - transaction-service
+      - notification-service
+  - name: environment
+    displayName: 'Target Environment'
+    type: string
+    default: 'dev'
+    values:
+      - dev
+      - qa
+      - uat
+      - prod
+
+variables:
+  - name: azureServiceConnection
+    value: 'Banking-App-Service-Connection' 
+  - name: acrName
+    value: 'bankingappregistrydev' 
+  - name: aksResourceGroup           
+    value: 'Banking_Application_Dev' 
+  - name: aksName                    
+    value: 'banking-app-aks-dev'     
+    
+  - ${{ if eq(parameters.environment, 'dev') }}:
+    - name: namespace
+      value: 'dev'
+    - name: sourceNamespace
+      value: '' 
+    - name: domainName
+      value: 'www.globalbankdev.local'
+
+  - ${{ if eq(parameters.environment, 'qa') }}:
+    - name: namespace
+      value: 'qa'
+    - name: sourceNamespace
+      value: 'dev'
+    - name: domainName
+      value: 'www.globalbankqa.local'
+
+  - ${{ if eq(parameters.environment, 'uat') }}:
+    - name: namespace
+      value: 'uat'
+    - name: sourceNamespace
+      value: 'qa'
+    - name: domainName
+      value: 'www.globalbankuat.local'
+
+  - ${{ if eq(parameters.environment, 'prod') }}:
+    - name: namespace
+      value: 'prod'
+    - name: sourceNamespace
+      value: 'uat'
+    - name: domainName
+      value: 'www.globalbankprod.local'
+
+stages:
+- stage: BuildAndPromote
+  displayName: 'Handle Docker Image for ${{ parameters.environment }}'
+  jobs:
+  - job: DockerLogic
+    steps:
+    - checkout: self
+    
+    - bash: |
+        SHORT_HASH=${BUILD_SOURCEVERSION:0:8}
+        echo "Git Commit: $BUILD_SOURCEVERSION"
+        echo "Short Hash: $SHORT_HASH"
+        # Exporting this as a variable so the next task can use it
+        echo "##vso[task.setvariable variable=imageTag]$SHORT_HASH"
+      displayName: 'Set Image Tag to Short Commit Hash'
+      
+    - task: AzureCLI@2
+      displayName: 'Build/Promote and Push via Azure CLI'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -e 
+          
+          echo "======================================================="
+          echo " HANDLING IMAGE FOR: ${{ parameters.serviceName }}"
+          echo " TARGET NAMESPACE: $(namespace)"
+          echo " SHARED ACR: $(acrName)"
+          echo " IMAGE TAG: $(imageTag)"
+          echo "======================================================="
+          
+          az acr login --name $(acrName)
+          
+          if [ "${{ parameters.environment }}" == "dev" ]; then
+            echo "Environment is DEV. Building a fresh image from source code..."
+            cd src/${{ parameters.serviceName }}
+            docker build -t $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag) .
+            docker push $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
+          else
+            echo "Environment is ${{ parameters.environment }}. Promoting tested image from $(sourceNamespace)..."
+            docker pull $(acrName).azurecr.io/$(sourceNamespace)/${{ parameters.serviceName }}:$(imageTag)
+            
+            echo "Retagging and pushing image to $(namespace) repository..."
+            docker tag $(acrName).azurecr.io/$(sourceNamespace)/${{ parameters.serviceName }}:$(imageTag) $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
+            docker push $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag)
+          fi
+
+    - task: AzureCLI@2
+      displayName: 'Inject Secrets & TLS to AKS'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -e
+
+          # --- 1. INJECT DATABASE SECRET ---
+          echo "--- Injecting Shared Database Secret for $(namespace) ---"
+
+          # We use a temporary file to ensure special characters in passwords don't break the shell
+          echo -n "$(dbPassword)" > db_password.txt
+
+          az aks command invoke \
+            --resource-group $(aksResourceGroup) \
+            --name $(aksName) \
+            --command "kubectl create secret generic central-db-secret --from-literal=DB_PASSWORD=\$(cat db_password.txt) -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
+            --file db_password.txt
+
+          rm db_password.txt
+
+          # --- 2. GENERATE & INJECT TLS (Frontend only) ---
+          if [ "${{ parameters.serviceName }}" == "frontend-service" ]; then
+            echo "--- Automating TLS Certificate Generation for $(domainName) ---"
+            
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -out globalbank-tls.crt \
+              -keyout globalbank-tls.key \
+              -subj "/CN=$(domainName)/O=Global Bank"
+              
+            echo "Injecting TLS Secret into AKS..."
+            
+            # IMPORTANT: In 'az aks command invoke', --file uploads files to the current directory.
+            # So we refer to them simply by their filenames, NOT 'path/to/cert'.
+            az aks command invoke \
+              --resource-group $(aksResourceGroup) \
+              --name $(aksName) \
+              --command "kubectl create secret tls banking-tls-secret --cert=globalbank-tls.crt --key=globalbank-tls.key -n $(namespace) --dry-run=client -o yaml | kubectl apply -f -" \
+              --file globalbank-tls.key \
+              --file globalbank-tls.crt
+              
+            rm globalbank-tls.key globalbank-tls.crt
+          fi
+
+    - task: CmdLine@2
+      displayName: 'Cleanup Local Disk Space'
+      condition: always() # Guarantees the agent is cleaned even if the build fails!
+      inputs:
+        script: |
+          echo "--- Cleaning up local Docker images ---"
+          docker rmi $(acrName).azurecr.io/$(namespace)/${{ parameters.serviceName }}:$(imageTag) || true
+          
+          if [ "$(sourceNamespace)" != "" ]; then
+            docker rmi $(acrName).azurecr.io/$(sourceNamespace)/${{ parameters.serviceName }}:$(imageTag) || true
+          fi
+
+- stage: UpdateGitOps
+  displayName: 'Update ArgoCD Git Manifests'
+  dependsOn: BuildAndPromote
+  condition: succeeded()
+  jobs:
+  - job: CommitToGitHub
+    steps:
+    - checkout: self
+      persistCredentials: true
+
+    - script: |
+        set -e
+        IMAGE_TAG=${BUILD_SOURCEVERSION:0:8}
+        
+        echo "--- 1. Updating the Tag File ---"
+        TAG_FILE="kube/banking-chart/tags/${{ parameters.environment }}-${{ parameters.serviceName }}.yaml"
+        
+        # Ensure the directory exists
+        mkdir -p kube/banking-chart/tags
+        
+        # We ONLY need to update the tag! The Helm template handles the rest dynamically.
+        echo "image:" > $TAG_FILE
+        echo "  tag: \"$IMAGE_TAG\"" >> $TAG_FILE
+        
+        echo "--- 2. Configuring Git ---"
+        git config --global user.email "kaivalya.bachkar@gmail.com"
+        git config --global user.name "kaivalya-bachkar"
+        
+        echo "--- 3. Committing to GitHub ---"
+        git add $TAG_FILE
+        git commit -m "deploy: promote ${{ parameters.serviceName }} to $IMAGE_TAG in ${{ parameters.environment }} [skip ci]"
+        
+        echo "--- 4. Pulling latest changes from GitHub (Rebase) ---"
+        # This prevents the "non-fast-forward" rejection error!
+        git pull --rebase https://$(GITHUB_PAT)@github.com/kaivalya-bachkar/Banking-Application-CI-CD.git main
+        
+        echo "--- 5. Pushing to GitHub ---"
+        git push https://$(GITHUB_PAT)@github.com/kaivalya-bachkar/Banking-Application-CI-CD.git HEAD:main
+      displayName: 'Commit Config to GitOps Repo'
+      env:
+        GITHUB_PAT: $(GITHUB_PAT)

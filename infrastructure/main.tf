@@ -11,7 +11,7 @@ module "Network" {
   nat_gw_name          = var.mod_nat_gw_name
 }
 
-module "acr-aks" {
+module "acr-aca" {
   source                  = "./modules/acr-aks"
   acr_name                = var.mod_acr_name
   resource-group-name     = module.Network.resource-group-name
@@ -22,17 +22,8 @@ module "acr-aks" {
   private_subnet_two_id   = module.Network.private_subnet_two_id
   psc_name                = var.mod_psc_name
   acr_dzg_name            = var.mod_acr_dzg_name
-  # -------------------------
-  aks_name              = var.mod_aks_name
-  dns_name              = var.mod_dns_name
-  node_pool_name        = var.mod_node_pool_name
-  aks_min_count         = var.mod_aks_min_count
-  aks_max_count         = var.mod_aks_max_count
-  aks_vm_size           = var.mod_aks_vm_size
-  private_subnet_one_id = module.Network.private_subnet_one_id
-  public_subnet_one_id  = module.Network.public_subnet_one_id
-  comman_tag            = var.mod_comman_tag
-  depends_on            = [module.Network]
+  private_subnet_one_id   = module.Network.private_subnet_one_id
+  aca_environments        = var.mod_aca_environments
 }
 
 module "postgres_db" {

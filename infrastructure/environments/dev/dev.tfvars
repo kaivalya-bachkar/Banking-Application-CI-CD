@@ -35,20 +35,21 @@ mod_psc_name = "banking-acr-psc-dev"
 
 mod_acr_dzg_name = "banking-acr-dns-zone-group-dev"
 #aks--------------------------------------
+mod_aca_environments = ["dev", "qa", "uat", "prod"]
 
-mod_aks_name = "banking-app-aks-dev"
+# mod_aks_name = "banking-app-aks-dev"
 
-mod_dns_name = "bankingappaksdev"
+# mod_dns_name = "bankingappaksdev"
 
-mod_node_pool_name = "systempool"
+# mod_node_pool_name = "systempool"
 
-mod_aks_min_count = 1
+# mod_aks_min_count = 1
 
-mod_aks_max_count = 2
+# mod_aks_max_count = 2
 
-mod_aks_vm_size = "Standard_D2s_v3"
+# mod_aks_vm_size = "Standard_D2s_v3"
 
-mod_comman_tag = "dev"
+# mod_comman_tag = "dev"
 
 #db--------------------------------------------
 

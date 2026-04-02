@@ -55,35 +55,14 @@ variable "mod_acr_dzg_name" {
   type = string
 }
 
-#aks-------------------------------------
-
-variable "mod_aks_name" {
-  type = string
+#-aca------------------------------------
+variable "mod_aca_environments" {
+  type = set(string)
 }
 
-variable "mod_dns_name" {
-  type = string
-}
-
-variable "mod_node_pool_name" {
-  type = string
-}
-
-variable "mod_aks_min_count" {
-  type = string
-}
-
-variable "mod_aks_max_count" {
-  type = string
-}
-
-variable "mod_aks_vm_size" {
-  type = string
-}
-
-variable "mod_comman_tag" {
-  type = string
-}
+# variable "mod_comman_tag" {
+#   type = string
+# }
 
 #db--------------------------------------------
 variable "mod_db_dns_zone_name" {

@@ -26,6 +26,19 @@ resource "azurerm_subnet" "private" {
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = [var.private_subnet_cidrs[count.index]]
 
+  # Azure Container Apps Delegation (Subnet 1)
+  dynamic "delegation" {
+    for_each = count.index == 0 ? [1] : []
+    content {
+      name = "aca-delegation"
+      service_delegation {
+        name    = "Microsoft.App/environments"
+        actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+      }
+    }
+  }
+
+  # PostgreSQL Delegation (Subnet 3)
   dynamic "delegation" {
     for_each = count.index == 2 ? [1] : []
     content {
