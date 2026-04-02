@@ -30,6 +30,8 @@ variables:
     value: 'Banking-App-Service-Connection' 
   - name: acrName
     value: 'bankingappregistrydev' 
+  - name: sharedResourceGroup
+    value: 'Banking_Application_Dev'
   - name: dbHost
     value: 'bankingdev-psqlflexibleserver.postgres.database.azure.com'
   - name: dbUser
@@ -40,6 +42,8 @@ variables:
   - ${{ if eq(parameters.environment, 'dev') }}:
     - name: envSuffix
       value: 'dev'
+    - name: acaEnvName
+      value: 'banking-aca-env-dev'
     - name: dbName
       value: 'banking_db_dev'
 
@@ -48,6 +52,8 @@ variables:
       value: 'qa'
     - name: sourceEnvSuffix
       value: 'dev'
+    - name: acaEnvName
+      value: 'banking-aca-env-qa'
     - name: dbName
       value: 'banking_db_qa'
 
@@ -56,6 +62,8 @@ variables:
       value: 'uat'
     - name: sourceEnvSuffix
       value: 'qa'
+    - name: acaEnvName
+      value: 'banking-aca-env-uat'
     - name: dbName
       value: 'banking_db_uat'
 
@@ -64,12 +72,10 @@ variables:
       value: 'prod'
     - name: sourceEnvSuffix
       value: 'uat'
+    - name: acaEnvName
+      value: 'banking-aca-env-prod'
     - name: dbName
       value: 'banking_db_prod'
-
-  # Dynamically set the Resource Group based on the environment
-  - name: targetResourceGroup
-    value: 'Banking_Application_$(envSuffix)'
 
 stages:
 - stage: BuildAndDeploy
@@ -93,26 +99,25 @@ stages:
         inlineScript: |
           set -e 
           
+          UNIQUE_APP_NAME="$(serviceName)-$(envSuffix)"
+          
           echo "======================================================="
-          echo " DEPLOYING: $(serviceName)"
-          echo " TARGET ENVIRONMENT: $(envSuffix)"
-          echo " TARGET RESOURCE GROUP: $(targetResourceGroup)"
-          echo " SHARED ACR: $(acrName)"
-          echo " DATABASE: $(dbName) on $(dbHost)"
+          echo " DEPLOYING APP: $UNIQUE_APP_NAME"
+          echo " TO ACA ENVIRONMENT: $(acaEnvName)"
+          echo " IN RESOURCE GROUP: $(sharedResourceGroup)"
           echo "======================================================="
           
           echo "--- 1. Handling Image for $(envSuffix) ---"
           az acr login --name $(acrName)
           
           if [ "${{ parameters.environment }}" == "dev" ]; then
-            echo "Environment is DEV. Building a fresh image from source code..."
+            echo "Building fresh image from source code..."
             cd src/$(serviceName)
             docker build -t $(acrName).azurecr.io/$(envSuffix)/$(serviceName):$(tag) .
             docker push $(acrName).azurecr.io/$(envSuffix)/$(serviceName):$(tag)
             cd ../../ 
           else
-            echo "Environment is ${{ parameters.environment }}. Promoting tested image from $(sourceEnvSuffix)..."
-            # Fast internal ACR promotion (Replaces slow pull/tag/push)
+            echo "Promoting tested image from $(sourceEnvSuffix)..."
             az acr import \
               --name $(acrName) \
               --source $(acrName).azurecr.io/$(sourceEnvSuffix)/$(serviceName):$(tag) \
@@ -122,29 +127,41 @@ stages:
           
           echo "--- 2. Deploying to Azure Container Apps ---"
           
-          # This single command replaces all the kubectl apply and sed replacement steps.
-          # It pushes the new image, securely injects the password into the ACA vault, 
-          # and maps the environment variables directly into the container.
+          INGRESS_TYPE="internal"
+          TARGET_PORT=5000 
           
-          az containerapp update \
-            --name $(serviceName) \
-            --resource-group $(targetResourceGroup) \
-            --image $(acrName).azurecr.io/$(envSuffix)/$(serviceName):$(tag) \
-            --set-secrets "db-password=$(dbPassword)" \
-            --set-env-vars \
-                DB_HOST="$(dbHost)" \
-                DB_USER="$(dbUser)" \
-                DB_NAME="$(dbName)" \
-                DB_PASS="secretref:db-password"
-                
-          echo "Deployment to ACA completed successfully!"
+          if [ "$(serviceName)" == "frontend-service" ]; then
+            echo "Frontend detected: Setting ingress to external."
+            INGRESS_TYPE="external"
+            TARGET_PORT=80 
+          fi
+          
+          if az containerapp show --name $UNIQUE_APP_NAME --resource-group $(sharedResourceGroup) &> /dev/null; then
+            echo "App $UNIQUE_APP_NAME exists. Updating revision..."
+            az containerapp update \
+              --name $UNIQUE_APP_NAME \
+              --resource-group $(sharedResourceGroup) \
+              --image $(acrName).azurecr.io/$(envSuffix)/$(serviceName):$(tag) \
+              --set-secrets "db-password=$(dbPassword)" \
+              --set-env-vars DB_HOST="$(dbHost)" DB_USER="$(dbUser)" DB_NAME="$(dbName)" DB_PASS="secretref:db-password"
+          else
+            echo "App $UNIQUE_APP_NAME does not exist. Creating it now..."
+            az containerapp create \
+              --name $UNIQUE_APP_NAME \
+              --resource-group $(sharedResourceGroup) \
+              --environment $(acaEnvName) \
+              --image $(acrName).azurecr.io/$(envSuffix)/$(serviceName):$(tag) \
+              --ingress $INGRESS_TYPE \
+              --target-port $TARGET_PORT \
+              --secrets "db-password=$(dbPassword)" \
+              --env-vars DB_HOST="$(dbHost)" DB_USER="$(dbUser)" DB_NAME="$(dbName)" DB_PASS="secretref:db-password"
+          fi
 
     - task: CmdLine@2
       displayName: 'Cleanup Local Disk Space'
       condition: always()
       inputs:
         script: |
-          echo "Cleaning up local images to save agent disk space..."
           docker rmi $(acrName).azurecr.io/$(envSuffix)/$(serviceName):$(tag) || true
           if [ "$(sourceEnvSuffix)" != "" ]; then
             docker rmi $(acrName).azurecr.io/$(sourceEnvSuffix)/$(serviceName):$(tag) || true
